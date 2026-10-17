@@ -69,6 +69,23 @@ pnpm smoke                      # 通用无头屏幕组装冒烟
 - **PR**：创建或更新 PR（包括改写描述）一律使用 `.agents/skills/pr`。
 - **Git 安全**：只暂存显式路径，不用 `git add .`/`git add -A`；不运行破坏性清理命令；未经要求不 commit、不打 tag、不 push、不发布。发布由 `v*` tag 驱动且必须与 `package.json` 版本完全一致。
 
+## Agent skills
+
+### Issue tracker
+
+Specs and tickets live in GitHub Issues in ZepPellN/dsh-TUI.
+See docs/agents/issue-tracker.md.
+
+### Triage labels
+
+Use the five default triage labels.
+See docs/agents/triage-labels.md.
+
+### Domain docs
+
+Single-context: root GLOSSARY.md and docs/adr/.
+See docs/agents/domain.md.
+
 ## 编辑本文件
 
 `CLAUDE.md` 是指向 `AGENTS.md` 的符号链接；编辑真身。每条规则保持自包含，细节链接到权威文档；表达在清晰存活时优先精简。
