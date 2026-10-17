@@ -29,7 +29,20 @@ assert.deepEqual(parseUpstreamVersion('0.1.2-alpha.3'), [0, 1, 2, 'alpha', 3])
 assert.ok(compareVersions(alpha, beta) < 0 && compareVersions(beta, rc) < 0)
 assert.ok(compareVersions(rc, parseUpstreamVersion('0.1.1-rc.2')!) > 0)
 assert.equal(parseUpstreamVersion('0.1.2'), undefined)
-assert.match(UPSTREAM_VALIDATED_LABEL, /^0\.2\.0-rc\.2/u)
+assert.equal(UPSTREAM_VALIDATED_VERSION, '0.2.1-rc.2', 'issue #2 targets this exact host, not latest')
+assert.match(UPSTREAM_VALIDATED_LABEL, /^0\.2\.1-rc\.2/u)
+for (const version of [
+  '0.1.0-rc.6', '0.1.0-rc.7', '0.1.0-rc.8', '0.1.1-rc.1', '0.1.1-rc.2',
+  '0.1.2-alpha.3', '0.1.2-alpha.4', '0.1.2-alpha.5', '0.1.2-rc.1',
+  '0.1.3-alpha.2', '0.1.5-alpha.1', '0.1.5-alpha.2', '0.1.5-rc.1',
+  '0.1.7-rc.1', '0.1.7-rc.2', '0.2.0-rc.1', '0.2.0-rc.2', '0.2.1-rc.2',
+]) {
+  const versions = Object.fromEntries(UPSTREAM_BLESSED_PACKAGES.map(name => [name,
+    UPSTREAM_FRAMEWORK_MAJORS[name] === 4 ? '4.0.1'
+      : UPSTREAM_FRAMEWORK_MAJORS[name] === 3 ? '3.18.1' : version,
+  ]))
+  assert.deepEqual(upstreamDrift(versions), [], `retain supported host ${version}`)
+}
 // The primary line must itself be a validated line. Without this, dropping
 // the primary from UPSTREAM_VALIDATED_VERSIONS still passes the prefix match
 // and upstreamDrift() (which inspects the INSTALLED versions, not the

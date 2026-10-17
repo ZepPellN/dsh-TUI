@@ -171,7 +171,7 @@ The `deepseek-official` API-key route needs `DEEPSEEK_API_KEY`. On DSH
 and select the separate account route through `/model`. Other supported
 accounts can sign in through `/provider` or `/auth` after startup.
 
-The primary compatibility target is DSH `0.2.0-rc.2`. This adapter supports its
+The primary compatibility target is DSH `0.2.1-rc.2`. This adapter supports its
 Shell API, V4 session messages, declarative presets, and profile-backed settings;
 older supported hosts retain their compatibility paths. See [configuration](docs/configuration.en.md).
 
@@ -203,7 +203,7 @@ dst
 > (so `/update` never drifts back to the registry build).
 
 Manual alternative (equivalent to the script's three steps):
-`npm install -g @deepseek-ai/dsh@0.2.0-rc.2 <release tarball URL>` →
+`npm install -g @deepseek-ai/dsh@0.2.1-rc.2 <release tarball URL>` →
 remove the nested `node_modules/@deepseek-ai` inside the TUI package →
 point the profile (`~/.dsh/profiles/dsh-tui`) dependency and package body at
 that tarball. The upstream registry build also works:

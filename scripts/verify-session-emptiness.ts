@@ -12,7 +12,8 @@ import { constants, zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 import { Context } from '@deepseek-ai/cordis'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistenceModule from '@deepseek-ai/dsh-session-persistence-jsonl'
+const JsonlSessionPersistence = 'default' in JsonlSessionPersistenceModule ? JsonlSessionPersistenceModule.default : JsonlSessionPersistenceModule
 import { settled } from './lib/unit-helpers.mjs'
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-tui-empty-'))

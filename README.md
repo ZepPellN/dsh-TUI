@@ -110,7 +110,7 @@
 
 前置条件：安装 [Node.js](https://nodejs.org/zh-cn) 与 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)。`deepseek-official` API key 路由需要 `DEEPSEEK_API_KEY`；DSH 0.2.0-rc.1+ 的标准 profile 也可用 `/auth login deepseek-account` 登录，再通过 `/model` 选择独立的账号路由。其他支持的账号可在启动后通过 `/provider` 或 `/auth` 登录。
 
-主适配目标为 DSH `0.2.0-rc.2`，已接入新版 Shell API、V4 会话消息、声明式预设与
+主适配目标为 DSH `0.2.1-rc.2`，已接入新版 Shell API、V4 会话消息、声明式预设与
 profile 设置；旧受支持版本保留兼容路径。迁移说明见[配置参考](docs/configuration.md)。
 
 DSH 0.1.7 的 `/settings` 使用 TUI 实际的 Loader 行 ID，也支持自定义 ID。
@@ -133,7 +133,7 @@ dst
 
 > **为什么推荐一键脚本**：本 fork 与上游 npm 包同名同版本（`@deepseek-harness-tui/dsh-tui@0.12.0`）。只跑 `npm install -g` 的话，profile 首次初始化会从 registry 拉到**上游版**，且 npm 可能把旧引擎线依赖嵌套进 TUI 目录导致模块加载失败。脚本会同时完成三件事：安装固定版本引擎与本 fork、清理嵌套的旧引擎依赖、把 profile 依赖与包体钉在本 fork 的 Release tarball 上（`/update` 也不会漂回 registry 版）。
 
-手动安装（等价于脚本的三步）：`npm install -g @deepseek-ai/dsh@0.2.0-rc.2 <Release tarball URL>` → 删除 TUI 包内 `node_modules/@deepseek-ai` 嵌套 → 把 profile（`~/.dsh/profiles/dsh-tui`）的依赖与包体指向该 tarball。也可安装上游 registry 版本：`npm install -g @deepseek-ai/dsh @deepseek-harness-tui/dsh-tui`。
+手动安装（等价于脚本的三步）：`npm install -g @deepseek-ai/dsh@0.2.1-rc.2 <Release tarball URL>` → 删除 TUI 包内 `node_modules/@deepseek-ai` 嵌套 → 把 profile（`~/.dsh/profiles/dsh-tui`）的依赖与包体指向该 tarball。也可安装上游 registry 版本：`npm install -g @deepseek-ai/dsh @deepseek-harness-tui/dsh-tui`。
 
 > **新用户提示**：pnpm ≥11 默认拦截带安装脚本的依赖，报 `ERR_PNPM_IGNORED_BUILDS`。更新时还会忽略异平台的 `@img/sharp-*` 原生包，省约 200MB 下载。`/update` 与 `dsh-tui update` 都会自动写好这两份配置，无需手工处理。细节见[安装与快速开始](docs/getting-started.md#pnpm-安装脚本拦截与异平台原生包)。
 

@@ -30,6 +30,8 @@ import { join } from 'node:path'
 const GATES = [
   'verify:boundary',
   'verify:contract',
+  'verify:host-migration',
+  'verify:packed-host-ci',
   'verify:herdr',
   'verify:manifest-deps',
   'verify:oauth',

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/context-hint-integration]
   pull_request:
 
 concurrency:
@@ -216,10 +216,8 @@ jobs:
       # 整合包产物编码契约防复发（.bat CRLF / install.ps1 UTF-8 BOM / install.sh LF）。
       - run: pnpm verify:installer-bundle
 
-  # The newest prerelease is source-checked while CI keeps rc.2 as the installed
-  # compatibility baseline. Type-check the adapter and compose both patches
-  # against the immutable upstream rc.1 source SHA. Missing source
-  # is a hard failure.
+  # Type-check the exact installed primary release and retained alpha.2 line
+  # against immutable upstream sources. Missing source is a hard failure.
   alpha-compat:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -235,11 +233,11 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
-      # deepseek-ai/deepseek-harness tag dsh-v0.2.0-rc.2
+      # deepseek-ai/deepseek-harness tag dsh-v0.2.1-rc.2
       - uses: actions/checkout@v7
         with:
           repository: deepseek-ai/deepseek-harness
-          ref: 639ed015397290b3745d163aafe02ffee4aa3f84
+          ref: 687f282e8625c6b8d11ff58211a90524be2e4317
           path: .upstream/deepseek-harness
           fetch-depth: 1
           persist-credentials: false
@@ -275,7 +273,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # Build validates the installed rc.1 baseline and, with the required
+      # Build validates the installed primary release and, with the required
       # source env above, must also compose that release's base/web patch.
       - run: pnpm build
         env:
@@ -288,7 +286,7 @@ jobs:
       - run: DSH_HARNESS_SOURCE_ROOT="$GITHUB_WORKSPACE/.upstream/deepseek-harness-alpha2" DSH_HARNESS_EXPECTED_VERSION=0.1.5-alpha.2 pnpm verify:alpha-source
 
       # Exercise the compatibility facade in both directions: it reads a real
-      # rc.1 Session and the real constructor accepts its seed metadata.
+      # primary Session and the real constructor accepts its seed metadata.
       # The ordinary CI groups also keep running the legacy fixture suite.
       - run: TSX_TSCONFIG_PATH="$DSH_HARNESS_SOURCE_ROOT/tsconfig.base.json" pnpm verify:live-session -- --real-upstream
 
@@ -606,12 +604,44 @@ jobs:
       - name: Installer bundle encoding contract (cross-platform)
         run: node scripts/verify-installer-bundle.mjs
 
+  # Always exercise the actual tarball through the official loader, even for
+  # docs PRs. Only the external model HTTP boundary is synthetic.
+  packed-host:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts --fetch-timeout 600000
+      - run: pnpm compile
+      - name: Packed exact host prompt, save and resume via PTY
+        run: node scripts/verify-packed-host.mjs roundtrip --evidence "$RUNNER_TEMP/dsh-packed-evidence"
+      - name: Retain packed host proof, including failed attempts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: packed-host-${{ matrix.os }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/dsh-packed-evidence/
+          retention-days: 7
+          if-no-files-found: error
+
   # CI 门禁：唯一的 required check 候选。汇总所有分组结果——任何一组失败
   # 或被取消，gate 显式失败并逐组报告状态。if: always() 保证上游失败时
   # gate 仍然运行（被跳过的 check 不会阻塞合并，失败才会）；后续 CI 内部
   # 再拆组、改名、加 matrix，branch protection 只需盯住这一个稳定名字。
   ci-gate:
-    needs: [changes, issue-link, build, gates, alpha-compat, render-scroll, input-terminal, session-workspace, channel-ui]
+    needs: [changes, issue-link, build, gates, alpha-compat, render-scroll, input-terminal, session-workspace, channel-ui, packed-host]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -624,6 +654,7 @@ jobs:
           BUILD: ${{ needs.build.result }}
           GATES: ${{ needs.gates.result }}
           ALPHA_COMPAT: ${{ needs.alpha-compat.result }}
+          PACKED_HOST: ${{ needs.packed-host.result }}
           RENDER_SCROLL: ${{ needs.render-scroll.result }}
           INPUT_TERMINAL: ${{ needs.input-terminal.result }}
           SESSION_WORKSPACE: ${{ needs.session-workspace.result }}
@@ -636,6 +667,12 @@ jobs:
           if [ "${CODE}" = "false" ]; then expected=skipped; else expected=success; fi
           echo "code=${CODE}，要求每组结束状态为 ${expected}"
           status=0
+          # Unlike the existing docs exemption, packed startup is mandatory on
+          # every PR/integration/main run. Missing/cancelled/skipped fails too.
+          if [ "${PACKED_HOST}" != "success" ]; then
+            echo "::error title=CI gate::packed-host=${PACKED_HOST} (required success on Linux and macOS)"
+            status=1
+          fi
           # changes 是全链路的分类源头：它自己失败时所有下游都是 skipped，
           # 必须在这里显式判失败，不能指望上面的期望值兜住。
           if [ "${CHANGES}" != "success" ]; then

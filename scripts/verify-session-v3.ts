@@ -9,7 +9,8 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { Session, SessionId, SessionLogOffset, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { createAssistantMessage, createSystemMessage, createUserMessage, type Message } from '@deepseek-ai/dsh-llm'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistenceModule from '@deepseek-ai/dsh-session-persistence-jsonl'
+const JsonlSessionPersistence = 'default' in JsonlSessionPersistenceModule ? JsonlSessionPersistenceModule.default : JsonlSessionPersistenceModule
 import CommandRuntime from '@deepseek-ai/dsh-commands'
 import { settled } from './lib/unit-helpers.mjs'
 

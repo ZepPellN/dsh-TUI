@@ -8,8 +8,14 @@
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context, Inject } from '@deepseek-ai/cordis'
+
+// The host retired dsh-invariants in 0.2.1. Keep the optional companion
+// entry for older hosts without requiring that retired package in new profiles.
+export interface InvariantInstaller {
+  (ctx: Context, fail: (message: string) => never): void | Promise<void>
+  readonly inject?: Inject
+}
 
 const PACKAGE_NAME = '@deepseek-harness-tui/dsh-tui'
 
@@ -30,6 +36,8 @@ const install: InvariantInstaller = () => {}
  * @param ctx - Cordis context carrying the invariant service.
  * @returns the installed registration's disposer after setup succeeds.
  */
-export const apply = (ctx: Context): Promise<() => void> =>
+export const apply = (ctx: Context & {
+  invariants: { register(packageName: string, installer: InvariantInstaller): () => void }
+}): Promise<() => void> =>
   Promise.resolve(ctx.invariants.register(PACKAGE_NAME, install))
 /* jscpd:ignore-end */
