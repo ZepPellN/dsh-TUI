@@ -21,8 +21,12 @@ Preconditions:
 - Launch and Doctor succeeded; the owned profile and workspace started empty.
 
 - **Open and create.** Run `node scripts/verify-packed-host.mjs drive --evidence
-  "$DSH_VERIFY_EVIDENCE"`. The fresh PTY records startup, Right/Ctrl+N, then a
-  composer screen in `fresh-ready.txt`.
+  "$DSH_VERIFY_EVIDENCE"`. Wait for the one owned `workspace` rail entry,
+  matching Sessions pane and completed empty listing (no loading/refreshing)
+  in `fresh-workspace-ready.txt`. Send Right once, then require the parsed
+  `❯ + New session` cursor in `fresh-sessions-pane.txt` before sending Ctrl+N
+  once. `actions.json` records both readiness states before their key actions.
+  Finally require the composer in `fresh-ready.txt`.
 - **Submit.** The helper types `VERIFY_FIRST: say hello`, waits for its echo,
   then sends Enter as a separate key event.
 - **Observe.** `fresh-answer.txt` must show `DSH_VERIFY_FIRST_OK`; the input did
@@ -35,6 +39,9 @@ Preconditions:
 
 - Session-search text is not the chat composer. Typing there filters sessions
   and must fail this journey, not count as a prompt submission.
+- The New session card renders before workspace hydration. Its label alone
+  neither makes Ctrl+N actionable nor acknowledges Right. Do not substitute
+  fixed sleeps, blind key retries or larger timeouts for these screen states.
 - New profiles must not require real credentials. A provider error is a
   failure; do not swap in a fake agent/channel or silently skip the response.
 - Initial-prompt CLI arguments and `/new` are other entry points not exercised

@@ -1,0 +1,8 @@
+
+   ▣ Sessions  This terminal hosts several sessions · switching does not stop them
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+   Workspaces (0)                │ Sessions in Sessions  0 working · 0 live · 0 total · refreshing
+                                   / Type to search sessions…
+                                    + New session
+                                    Start a session in "Sessions"
+                                   Loading sessions…
