@@ -2,7 +2,7 @@
  * Upstream compatibility contract.
  *
  * The TUI is validated against a set of upstream prerelease lines — the
- * current primary (0.2.0-rc.2) plus older lines kept in backward
+ * current primary (0.2.1-rc.2) plus older lines kept in backward
  * compatibility across the 0.1.7, 0.1.5, 0.1.3, 0.1.2, 0.1.1 and 0.1.0
  * release families.
  * Every official package this adapter touches is blessed here; anything
@@ -17,12 +17,12 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 /** Primary validated upstream line (newest). */
-export const UPSTREAM_VALIDATED_VERSION = '0.2.0-rc.2'
+export const UPSTREAM_VALIDATED_VERSION = '0.2.1-rc.2'
 
 /**
  * Explicitly supported upstream prerelease lines, oldest first.
  *
- * 0.2.0-rc.2 = primary continuous-CI line; 0.2.0-rc.1 and
+ * 0.2.1-rc.2 = primary continuous-CI line; 0.2.0-rc.2/rc.1 and
  * 0.1.7-rc.2/rc.1 = previous
  * family (mapped compatibility); 0.1.5-rc.1/alpha.2/alpha.1 = mapped
  * compatibility lines (source-checked when the primary line moves);
@@ -54,6 +54,7 @@ export const UPSTREAM_VALIDATED_VERSIONS = [
   '0.1.7-rc.2',
   '0.2.0-rc.1',
   '0.2.0-rc.2',
+  '0.2.1-rc.2',
 ] as const
 
 /**
@@ -69,7 +70,6 @@ export const UPSTREAM_FRAMEWORK_MAJORS: Record<string, number> = {
 export const UPSTREAM_BLESSED_PACKAGES = [
   '@deepseek-ai/cordis',
   '@deepseek-ai/schemastery',
-  '@deepseek-ai/dsh-invariants',
   '@deepseek-ai/dsh-agent',
   '@deepseek-ai/dsh-agent-instructions',
   '@deepseek-ai/dsh-agent-preset-registry',

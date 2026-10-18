@@ -12,10 +12,10 @@ UI 层(`screens/`、`components/`、`ink/`、`hooks/`、`utils/`、`terminal-uti
 
 ## 上游契约
 
-- 校验版本线:主 `0.2.0-rc.2`,兼容 `0.2.0-rc.1` / `0.1.7-rc.2` / `0.1.7-rc.1` / `0.1.5-rc.1` / `0.1.5-alpha.2` / `0.1.5-alpha.1` / `0.1.3-alpha.2` / `0.1.2-rc.1` / `0.1.2-alpha.5` / `0.1.2-alpha.4` / `0.1.2-alpha.3` / `0.1.1-rc.2` / `0.1.1-rc.1` / `0.1.0-rc.8` / `0.1.0-rc.7` / `0.1.0-rc.6`
+- 校验版本线:主 `0.2.1-rc.2`,兼容 `0.2.0-rc.2` / `0.2.0-rc.1` / `0.1.7-rc.2` / `0.1.7-rc.1` / `0.1.5-rc.1` / `0.1.5-alpha.2` / `0.1.5-alpha.1` / `0.1.3-alpha.2` / `0.1.2-rc.1` / `0.1.2-alpha.5` / `0.1.2-alpha.4` / `0.1.2-alpha.3` / `0.1.1-rc.2` / `0.1.1-rc.1` / `0.1.0-rc.8` / `0.1.0-rc.7` / `0.1.0-rc.6`
   (`src/dsh-adapter/contract.ts` 的 `UPSTREAM_VALIDATED_VERSIONS`;特性门控用
   `installedMeetsVersion(pkg, 'x.y.z-<alpha|beta|rc>.n')` 跨家族、跨预发布通道比较,老安装上优雅降级)
-- peer 范围:`^0.1.0-rc.6 || ^0.1.1-rc.1 || 0.1.2-alpha.3 || 0.1.2-alpha.4 || 0.1.2-alpha.5 || 0.1.2-rc.1 || 0.1.3-alpha.2 || 0.1.5-alpha.1 || 0.1.5-alpha.2 || 0.1.5-rc.1 || 0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2`(新命名的 registry/PTC 包仅声明 `0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2`;契约外版本启动时打 drift 警告;新增预发布一律用精确 OR,不用 caret)
+- peer 范围:`^0.1.0-rc.6 || ^0.1.1-rc.1 || 0.1.2-alpha.3 || 0.1.2-alpha.4 || 0.1.2-alpha.5 || 0.1.2-rc.1 || 0.1.3-alpha.2 || 0.1.5-alpha.1 || 0.1.5-alpha.2 || 0.1.5-rc.1 || 0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.2`(新命名的 registry/PTC 包仅声明 `0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.2`;契约外版本启动时打 drift 警告;新增预发布一律用精确 OR,不用 caret)
 - 白名单包:blessed list(harness 包按完整版本号校验,框架包 cordis/schemastery 按 major 校验)
 - 启动时:检测到 drift 打 warning;CI 上 `pnpm run verify:contract` 直接失败
 
@@ -50,7 +50,11 @@ web-app patch 按 include 语义合成一遍,直接拦截 loader entry id 复用
 
 ## 升级流程
 
-- dev 树由 `pnpm-workspace.yaml` 的 overrides 钉在 `0.2.0-rc.2`,
+- 根目录 `install.sh` / `install.ps1` 安装的是已发布的 elevenfund
+  `v0.12.0-e1` 旧 tarball，保留其 `0.2.0-rc.2` 引擎配对；不是源码主目标的镜像。
+  不得只改引擎 pin 而继续安装缺少修复的旧产物。源码目标通过
+  [隔离打包验证](.agents/skills/verify/SKILL.md)检查，发布需要另行授权。
+- dev 树由 `pnpm-workspace.yaml` 的 overrides 钉在 `0.2.1-rc.2`,
   CI `alpha-compat` lane 还对同版上游 tag 的固定 SHA 做源码类型与 patch 合成校验。
   旧 SQLite 迁移工具的依赖闭包单独锁在 `vendor/sqlite-island`。
 - `contract.ts` 是唯一真源:主验证线原地替换、不累积;`package.json` 的
@@ -60,6 +64,21 @@ web-app patch 按 include 语义合成一遍,直接拦截 loader entry id 复用
   追加、保留历史。
 - 业务 UI 代码原则上零修改;若最新预发布源码 tsc 报错,修复落在 `src/dsh-adapter/`
   内,优先形状探测而非版本门,老安装上优雅降级。
+
+## 0.2.1 持久化与实包验证
+
+JSONL 后端在 `0.2.1-rc.2` 导出 Cordis `apply` 插件而非默认 class；迁移工具
+使用 namespace，并按导出形状保留旧 default 回退。非空迁移经官方后端恢复验证，
+旧 SQLite 迁移仍使用隔离的依赖闭包。上游已移除 `dsh-invariants` 包；可选的
+旧宿主 companion 入口保留，用本地结构类型注册原有 no-op installer，不给新
+profile 引入不存在的包。
+
+`pnpm verify:host-migration` 验证非空导入、官方 read/restore 和重复导入。
+`.agents/skills/verify/` 描述真实 tarball → 官方 loader → PTY → 合成 provider →
+保存/恢复/继续/退出的用户路径；不替换宿主、持久化或 TUI runtime。
+CI 的 `packed-host` 在 Linux/macOS 上运行，并在 PR、integration、main 的
+`ci-gate` 中必需成功（失败、取消、缺失或跳过不放行）。这不是分支保护配置；
+远程结果必须由实际 workflow run 确认。
 
 ## 0.1.7 适配接缝
 

@@ -9,7 +9,8 @@ import { dirname, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { Session, SessionId, SessionLogOffset, interruptedTurnClosers, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { CreateAgentOptions } from '@deepseek-ai/dsh-agent'
-import Jsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlModule from '@deepseek-ai/dsh-session-persistence-jsonl'
+const Jsonl = 'default' in JsonlModule ? JsonlModule.default : JsonlModule
 import { Session as LegacySession } from '../vendor/sqlite-island/index.js'
 import { settled } from './lib/term-test.mjs'
 

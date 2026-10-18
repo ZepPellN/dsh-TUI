@@ -15,6 +15,8 @@ $ErrorActionPreference = 'Stop'
 
 $ReleaseBase = 'https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1'
 $Tarball = "$ReleaseBase/elevenfund-dsh-tui-0.12.0.tgz"
+# Released artifact pairing, not the source checkout's compatibility target.
+# Advancing this pin requires a new TUI artifact containing the host fixes.
 $EngineVersion = '0.2.0-rc.2'
 $TuiName = '@deepseek-harness-tui/dsh-tui'
 

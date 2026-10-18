@@ -171,9 +171,17 @@ The `deepseek-official` API-key route needs `DEEPSEEK_API_KEY`. On DSH
 and select the separate account route through `/model`. Other supported
 accounts can sign in through `/provider` or `/auth` after startup.
 
-The primary compatibility target is DSH `0.2.0-rc.2`. This adapter supports its
+This source checkout's primary compatibility target is DSH `0.2.1-rc.2`. This adapter supports its
 Shell API, V4 session messages, declarative presets, and profile-backed settings;
 older supported hosts retain their compatibility paths. See [configuration](docs/configuration.en.md).
+
+The installer scripts and manual three-step route below use the published
+elevenfund `v0.12.0-e1` artifact, paired with DSH `0.2.0-rc.2`. That old tarball
+does not contain this checkout's `0.2.1-rc.2` compatibility and migration fixes;
+upgrading only its engine cannot supply them. No new artifact is released here.
+To verify the source target, follow the [source verification skill](.agents/skills/verify/SKILL.md)
+to build and run the actual packed checkout in an isolated profile. Do not
+substitute the old release tarball or overwrite your everyday CLI/profile.
 
 On DSH 0.1.7, `/settings` uses the TUI's actual Loader entry ID, including custom
 IDs. It requires matching profile dependencies with `@deepseek-ai/schemastery`
@@ -181,7 +189,7 @@ IDs. It requires matching profile dependencies with `@deepseek-ai/schemastery`
 instead of showing an uneditable settings page. Older hosts keep their legacy settings scope.
 
 ```sh
-# One-shot install (recommended): engine + TUI + profile setup in one go
+# Published install: DSH 0.2.0-rc.2 + v0.12.0-e1 TUI + profile (not the source target)
 # Windows (PowerShell)
 irm https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.ps1 | iex
 # macOS / Linux
@@ -202,12 +210,16 @@ dst
 > pins the profile dependency and package body to this fork's release tarball
 > (so `/update` never drifts back to the registry build).
 
-Manual alternative (equivalent to the script's three steps):
-`npm install -g @deepseek-ai/dsh@0.2.0-rc.2 <release tarball URL>` →
-remove the nested `node_modules/@deepseek-ai` inside the TUI package →
+Manual installation of the published release (the same three steps as the script):
+
+```sh
+npm install -g @deepseek-ai/dsh@0.2.0-rc.2 https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/elevenfund-dsh-tui-0.12.0.tgz
+```
+
+Then remove the nested `node_modules/@deepseek-ai` inside the TUI package and
 point the profile (`~/.dsh/profiles/dsh-tui`) dependency and package body at
-that tarball. The upstream registry build also works:
-`npm install -g @deepseek-ai/dsh @deepseek-harness-tui/dsh-tui`.
+that same tarball. The upstream registry build is a different distribution;
+it is not a substitute for verifying this checkout's compatibility fixes either.
 
 > **New-user note**: pnpm ≥11 blocks dependencies with install scripts by
 > default and reports `ERR_PNPM_IGNORED_BUILDS`. Updates skip foreign-platform
