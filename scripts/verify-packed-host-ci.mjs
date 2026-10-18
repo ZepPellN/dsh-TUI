@@ -1,4 +1,4 @@
-/** Workflow regression: real packed host on Linux/macOS and fail-closed gate.
+/** Public parsed-screen readiness and packed workflow/fail-closed regression.
  * Runs the actual ci-gate shell step with success/failure/cancel/missing results.
  * node scripts/verify-packed-host-ci.mjs (no GitHub writes or runner claims).
  */
@@ -6,6 +6,25 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { parse } from 'yaml'
+import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-screen.mjs'
+
+// Public parsed screens retained from push run 39100161698 on macOS. The
+// failed startup had the card before hydration; its later timeout screen had
+// the hydrated workspace and focused card, but the earlier Ctrl+N was lost.
+const loading = readFileSync(new URL('./fixtures/packed-host/loading-picker.txt', import.meta.url), 'utf8')
+const ready = readFileSync(new URL('./fixtures/packed-host/ready-picker.txt', import.meta.url), 'utf8')
+const unfocusedCard = ready.replace('❯ + New session', '  + New session')
+const cases = [
+  ['cold loading screen is not a workspace or key-action precondition', loading, false, false],
+  ['hydrated picker without list cursor still needs Right acknowledgement', unfocusedCard, true, false],
+  ['hydrated picker with focused card can accept Ctrl+N', ready, true, true],
+  ['workspace identity must match the owned launch workspace', ready.replaceAll('workspace', 'other-project'), false, false],
+  ['a visible cursor during refresh is not ready', ready + '\nLoading sessions… · refreshing', false, false],
+]
+assert.deepEqual(cases.map(([name, screen]) => [name,
+  workspacePickerReady(screen, 'workspace'), newSessionActionReady(screen, 'workspace'),
+]), cases.map(([name, , workspaceReady, actionReady]) => [name, workspaceReady, actionReady]))
+console.log('PASS parsed picker screens: hydration, owned workspace and acknowledged list focus precede keys')
 
 const ci = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
 assert(ci.on.pull_request !== undefined || Object.hasOwn(ci.on, 'pull_request'))

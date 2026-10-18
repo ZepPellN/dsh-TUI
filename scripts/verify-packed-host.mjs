@@ -14,6 +14,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import xterm from '@xterm/headless'
 import { settled, viewportLines, writeParsed } from './lib/term-test.mjs'
+import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-screen.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const { Terminal } = xterm
@@ -181,9 +182,12 @@ async function drive() {
       record({ session: label, argv: [state.bin, ...args], cwd: join(state.scratch, 'workspace') })
       await wait('startup', () => /Type to search sessions|⌸\s+❯/u.test(screen()) && exitCode === undefined)
       if (screen().includes('Type to search sessions')) {
+        await wait('workspace-ready', () => workspacePickerReady(screen(), 'workspace') && exitCode === undefined)
+        record({ session: label, state: 'workspace-ready', screen: `${label}-workspace-ready.txt` })
         record({ session: label, keys: 'Right', action: 'Focus sessions pane' })
         send('\x1b[C')
-        await wait('sessions-pane', () => screen().includes('+ New session'))
+        await wait('sessions-pane', () => newSessionActionReady(screen(), 'workspace') && exitCode === undefined)
+        record({ session: label, state: 'new-session-action-ready', screen: `${label}-sessions-pane.txt` })
         record({ session: label, keys: 'Ctrl+N', action: 'New session from workspace picker' })
         send('\x0e')
       }
