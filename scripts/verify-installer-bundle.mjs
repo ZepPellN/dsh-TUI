@@ -9,6 +9,8 @@
  *
  * 平台：全平台可跑。Windows 专属组（PS 5.1 默认解码回读 / cmd stub 冒烟）只在
  * Windows 上执行；非 Windows 打显式 SKIP 并计入 SKIPPED，不冒充 PASS。
+ * 另验根目录 fork 安装器的已发布 tarball/引擎配对；POSIX 仅在 npm 边界
+ * stub 并失败退出，不执行真实全局安装或 profile 写入。
  *
  * 运行：node scripts/verify-installer-bundle.mjs（有 FAIL 即以非 0 退出）
  */
@@ -77,6 +79,44 @@ try {
       fail(file, '文件缺失或不可读', 'N/A')
       return null
     }
+  }
+
+  // The fork release is an older artifact, not this checkout's primary host
+  // target. Advancing only its engine pin pairs an unfixed TUI with a new host.
+  const releasedTarball = 'https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/elevenfund-dsh-tui-0.12.0.tgz'
+  for (const [file, releaseKey, engineKey, tarballKey, releaseVariable] of [
+    ['install.sh', 'RELEASE_BASE', 'ENGINE_VERSION', 'TARBALL', '$RELEASE_BASE'],
+    ['install.ps1', '\\$ReleaseBase', '\\$EngineVersion', '\\$Tarball', '$ReleaseBase'],
+  ]) {
+    const source = readFileSync(join(root, file), 'utf8')
+    const release = source.match(new RegExp(`^${releaseKey} ?= ?'([^']+)'`, 'm'))?.[1]
+    const engine = source.match(new RegExp(`^${engineKey} ?= ?'([^']+)'`, 'm'))?.[1]
+    const tarball = source.match(new RegExp(`^${tarballKey} ?= ?"([^"]+)"`, 'm'))?.[1]
+      ?.replace(releaseVariable, release)
+    if (tarball === releasedTarball && engine === '0.2.0-rc.2')
+      pass(`${file}: released v0.12.0-e1 stays paired with DSH 0.2.0-rc.2 (configuration)`)
+    else fail(file, `released artifact/engine mismatch: ${tarball}, ${engine}`, 'N/A')
+  }
+
+  // Stub only the external npm boundary. Stop at the install request: never
+  // install globally, download a release, or reach the profile cleanup steps.
+  if (isWin) {
+    skip('fork install.sh npm request', 'POSIX shell required')
+  } else {
+    const requestPath = join(tmp, 'fork-npm-request.txt')
+    const home = join(tmp, 'fork-home')
+    const run = spawnSync('bash', ['-c', `
+      npm() { printf '%s\\n' "$@" > "$DSH_INSTALL_REQUEST"; return 73; }
+      export -f npm
+      bash "$1"
+    `, 'verify-fork-installer', join(root, 'install.sh')], {
+      encoding: 'utf8', timeout: 20000,
+      env: { ...process.env, HOME: home, USERPROFILE: home, DSH_INSTALL_REQUEST: requestPath },
+    })
+    const request = existsSync(requestPath) ? readFileSync(requestPath, 'utf8') : ''
+    if (run.status === 73 && request === `install\n-g\n@deepseek-ai/dsh@0.2.0-rc.2\n${releasedTarball}\n` && !existsSync(home))
+      pass('fork install.sh requests the released pair and stops before profile mutation on npm failure')
+    else fail('install.sh', `npm request mismatch or failure did not stop safely (status=${run.status}, request=${clip(request)})`, 'N/A')
   }
 
   // .bat × 2：cmd.exe 的 CRLF 解析契约。

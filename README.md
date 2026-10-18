@@ -110,8 +110,14 @@
 
 前置条件：安装 [Node.js](https://nodejs.org/zh-cn) 与 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)。`deepseek-official` API key 路由需要 `DEEPSEEK_API_KEY`；DSH 0.2.0-rc.1+ 的标准 profile 也可用 `/auth login deepseek-account` 登录，再通过 `/model` 选择独立的账号路由。其他支持的账号可在启动后通过 `/provider` 或 `/auth` 登录。
 
-主适配目标为 DSH `0.2.1-rc.2`，已接入新版 Shell API、V4 会话消息、声明式预设与
+本源码检出的主适配目标为 DSH `0.2.1-rc.2`，已接入新版 Shell API、V4 会话消息、声明式预设与
 profile 设置；旧受支持版本保留兼容路径。迁移说明见[配置参考](docs/configuration.md)。
+
+下方安装脚本与手动三步使用已发布的 elevenfund `v0.12.0-e1`，配套引擎为
+`0.2.0-rc.2`。该旧 tarball 不含本检出的 `0.2.1-rc.2` 兼容与迁移修复，不能只升级
+引擎来获得这些修复；此处未发布新产物。验证源码目标请按
+[源码验证技能](.agents/skills/verify/SKILL.md)构建并在隔离 profile 中运行实际打包的检出，
+不要用旧 Release tarball 代替，也不要覆盖日常 CLI/profile。
 
 DSH 0.1.7 的 `/settings` 使用 TUI 实际的 Loader 行 ID，也支持自定义 ID。
 profile 依赖须配套，包含 `@deepseek-ai/schemastery` 3.18.3 或更新版本；
@@ -119,7 +125,7 @@ Schema 不兼容时，TUI 在启动阶段报错并提示修复安装，不再显
 旧 host 继续使用原有设置 scope。
 
 ```sh
-# 一键安装（推荐）：装引擎 + 装 TUI + 配置 profile，一步到位
+# 已发布版本安装：DSH 0.2.0-rc.2 + v0.12.0-e1 TUI + profile（不是源码目标）
 # Windows (PowerShell)
 irm https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.ps1 | iex
 # macOS / Linux
@@ -133,7 +139,15 @@ dst
 
 > **为什么推荐一键脚本**：本 fork 与上游 npm 包同名同版本（`@deepseek-harness-tui/dsh-tui@0.12.0`）。只跑 `npm install -g` 的话，profile 首次初始化会从 registry 拉到**上游版**，且 npm 可能把旧引擎线依赖嵌套进 TUI 目录导致模块加载失败。脚本会同时完成三件事：安装固定版本引擎与本 fork、清理嵌套的旧引擎依赖、把 profile 依赖与包体钉在本 fork 的 Release tarball 上（`/update` 也不会漂回 registry 版）。
 
-手动安装（等价于脚本的三步）：`npm install -g @deepseek-ai/dsh@0.2.1-rc.2 <Release tarball URL>` → 删除 TUI 包内 `node_modules/@deepseek-ai` 嵌套 → 把 profile（`~/.dsh/profiles/dsh-tui`）的依赖与包体指向该 tarball。也可安装上游 registry 版本：`npm install -g @deepseek-ai/dsh @deepseek-harness-tui/dsh-tui`。
+手动安装已发布版本（等价于脚本的三步）：
+
+```sh
+npm install -g @deepseek-ai/dsh@0.2.0-rc.2 https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/elevenfund-dsh-tui-0.12.0.tgz
+```
+
+然后删除 TUI 包内 `node_modules/@deepseek-ai` 嵌套，并把 profile
+（`~/.dsh/profiles/dsh-tui`）的依赖与包体指向同一 tarball。上游 registry 版本是另一个
+发行物，也不能代替本检出的兼容性验证。
 
 > **新用户提示**：pnpm ≥11 默认拦截带安装脚本的依赖，报 `ERR_PNPM_IGNORED_BUILDS`。更新时还会忽略异平台的 `@img/sharp-*` 原生包，省约 200MB 下载。`/update` 与 `dsh-tui update` 都会自动写好这两份配置，无需手工处理。细节见[安装与快速开始](docs/getting-started.md#pnpm-安装脚本拦截与异平台原生包)。
 

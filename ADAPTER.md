@@ -50,6 +50,10 @@ web-app patch 按 include 语义合成一遍,直接拦截 loader entry id 复用
 
 ## 升级流程
 
+- 根目录 `install.sh` / `install.ps1` 安装的是已发布的 elevenfund
+  `v0.12.0-e1` 旧 tarball，保留其 `0.2.0-rc.2` 引擎配对；不是源码主目标的镜像。
+  不得只改引擎 pin 而继续安装缺少修复的旧产物。源码目标通过
+  [隔离打包验证](.agents/skills/verify/SKILL.md)检查，发布需要另行授权。
 - dev 树由 `pnpm-workspace.yaml` 的 overrides 钉在 `0.2.1-rc.2`,
   CI `alpha-compat` lane 还对同版上游 tag 的固定 SHA 做源码类型与 patch 合成校验。
   旧 SQLite 迁移工具的依赖闭包单独锁在 `vendor/sqlite-island`。
