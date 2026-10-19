@@ -1210,6 +1210,10 @@ export function createRunCommand(deps: RunCommandDeps) {
         })
         return true
       }
+      case 'hint':
+        setHelpOpen(false)
+        channel.contextHint(rawInput)
+        return true
       case 'btw': {
         // `/btw`：单轮无工具侧问，overlay 态纯 UI，不打断主回合、不写
         // 会话历史。空参数只提示用法。

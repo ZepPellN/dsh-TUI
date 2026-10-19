@@ -34,7 +34,8 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync } from 'node:fs'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { writeFileAtomic, withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { Context, Service } from '@deepseek-ai/cordis'
@@ -106,6 +107,13 @@ export interface TuiPluginStorage {
   get(input: { key: string }): Promise<{ value: unknown | null }>
   set(input: { key: string; value: unknown }): Promise<{ stored: true }>
   delete(input: { key: string }): Promise<{ deleted: boolean }>
+}
+
+const storageWriteGuard = new AsyncLocalStorage<() => boolean>()
+
+/** Internal restriction only: never changes identity, grants or the public contract. */
+export function withStorageWriteGuard<T>(current: () => boolean, operation: () => Promise<T>): Promise<T> {
+  return storageWriteGuard.run(current, operation)
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -561,33 +569,57 @@ hostContext: compositionRoot(ctx),
         }
         return output
       }),
-      set: (input: { key: string; value: unknown }) => enqueue(async () => {
-        assertCapabilityShadowPolicy('host.storage.write', runtime.mode, runtime.slices)
-        validateStorageInput('set', input)
-        const key = input.key
-        const value = input.value
-        assertKey(key)
-        assertJsonValue(value)
-        requireGrant('storage.local.write')
-        ensureDir()
-        return withFileLock(file, async () => {
-          const table = readTable()
-          const isNewKey = !Object.hasOwn(table, key)
-          if (isNewKey && Object.keys(table).length >= STORAGE_MAX_KEYS) {
-            throw new PluginStorageError('QUOTA_EXCEEDED', `storage namespace "${plugin}" holds ${STORAGE_MAX_KEYS} keys already`)
+      set: (input: { key: string; value: unknown }) => {
+        const current = storageWriteGuard.getStore()
+        return enqueue(async () => {
+          const assertCurrent = () => {
+            if (current !== undefined && (closed || !current())) {
+              throw new PluginStorageError('STORAGE_UNAVAILABLE', 'storage write invalidated before commit')
+            }
           }
-          table[key] = value
-          const content = JSON.stringify(table)
-          if (Buffer.byteLength(content, 'utf8') > STORAGE_MAX_BYTES) {
-            throw new PluginStorageError('QUOTA_EXCEEDED', `storage namespace "${plugin}" would exceed ${STORAGE_MAX_BYTES} bytes`)
-          }
-          // 0o600/0o700: the namespace is privacyClass sensitive.
-          await writeFileAtomic(file, content, { mode: 0o600, dirMode: 0o700 })
-          const output = { stored: true as const }
-          validateSetOutput(output)
-          return output
+          assertCurrent()
+          assertCapabilityShadowPolicy('host.storage.write', runtime.mode, runtime.slices)
+          validateStorageInput('set', input)
+          const key = input.key
+          const value = input.value
+          assertKey(key)
+          assertJsonValue(value)
+          requireGrant('storage.local.write')
+          ensureDir()
+          return withFileLock(file, async () => {
+            assertCurrent()
+            const table = readTable()
+            const isNewKey = !Object.hasOwn(table, key)
+            if (isNewKey && Object.keys(table).length >= STORAGE_MAX_KEYS) {
+              throw new PluginStorageError('QUOTA_EXCEEDED', `storage namespace "${plugin}" holds ${STORAGE_MAX_KEYS} keys already`)
+            }
+            table[key] = value
+            const content = JSON.stringify(table)
+            if (Buffer.byteLength(content, 'utf8') > STORAGE_MAX_BYTES) {
+              throw new PluginStorageError('QUOTA_EXCEEDED', `storage namespace "${plugin}" would exceed ${STORAGE_MAX_BYTES} bytes`)
+            }
+            // 0o600/0o700: the namespace is privacyClass sensitive.
+            if (current === undefined) await writeFileAtomic(file, content, { mode: 0o600, dirMode: 0o700 })
+            else {
+              // An asynchronous atomic write alone cannot fence cancellation
+              // during disk I/O. Prepare under the same lock, then check and
+              // synchronously rename with no await between guard and commit.
+              const staged = `${file}.${randomUUID()}.guarded.tmp`
+              try {
+                await writeFileAtomic(staged, content, { mode: 0o600, dirMode: 0o700 })
+                assertCurrent()
+                requireGrant('storage.local.write')
+                renameSync(staged, file)
+              } finally {
+                try { unlinkSync(staged) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+              }
+            }
+            const output = { stored: true as const }
+            validateSetOutput(output)
+            return output
+          })
         })
-      }),
+      },
       delete: (input: { key: string }) => enqueue(async () => {
         assertCapabilityShadowPolicy('host.storage.write', runtime.mode, runtime.slices)
         validateStorageInput('delete', input)

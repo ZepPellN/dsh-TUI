@@ -24,6 +24,7 @@ import { createModeActions } from './channel/mode-actions.js'
 import { createFileActions } from './channel/file-actions.js'
 import { createReportActions } from './channel/reports.js'
 import { createSessionMetadataActions } from './channel/session-metadata.js'
+import { createContextHintHost } from './context-hint/host.js'
 import { createForeignBrowser } from './migrate/browse.js'
 import { markChannelReadDirty } from '../adapter/channel/read-view.js'
 import { createAgentViewProjection } from './channel/agent-view-projection.js'
@@ -477,6 +478,7 @@ function createChannelWithOwner(
   let fileActions: ReturnType<typeof createFileActions>
   let reportActions: ReturnType<typeof createReportActions>
   let sessionMetadataActions: ReturnType<typeof createSessionMetadataActions>
+  let contextHintHost: ReturnType<typeof createContextHintHost>
   let localActions!: ReturnType<typeof createLocalActions>
   let commandCompletions!: (input: string) => readonly import('../commands.js').CommandCompletion[]
   const actionReadiness = createChannelActionReadiness()
@@ -1031,6 +1033,7 @@ function createChannelWithOwner(
     renameSession: sessionMetadataActions.renameSession,
     setSessionColor: sessionMetadataActions.setSessionColor,
     recapRecent: sessionMetadataActions.recapRecent,
+    contextHint: input => contextHintHost.run(input),
     deleteSession: sessionMetadataActions.deleteSession,
     renameSessionTo: sessionMetadataActions.renameSessionTo,
     compact: compactManualSession,
@@ -1081,6 +1084,12 @@ function createChannelWithOwner(
     skillCatalog.start()
     void refreshLoadedContext()
     bindAgent()
+    contextHintHost = createContextHintHost(ctx, {
+      owner, binding, cwd: () => state.cwd, route: () => ({ provider: state.provider, model: state.model }),
+      subscribe: emitter.subscribe,
+      shortcut: options.contextHintShortcut,
+      notify: text => notify(text, { color: 'warning', timeoutMs: 8000 }),
+    })
   } catch (error) {
     // Keep the setup failure primary. The outer construction funnel attempts
     // every cleanup, including partial subscriptions from this exact step.

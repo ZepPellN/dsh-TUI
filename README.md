@@ -194,6 +194,31 @@ CLI 形态：任意终端运行 `dsh-tui migrate ...`，与 TUI 内执行同一�
 
 **VS Code**：用集成终端，或用 `dsh-tui-vscode` 扩展。见 [VS Code 使用指南](docs/vscode.md)。**Herdr**：在 [Herdr](https://herdr.dev) 窗格运行 `dsh-tui`，经其本地集成 API 报告 `idle` / `working` / `blocked`。
 
+## Context Hint（手动恢复卡片）
+
+默认关闭；`/hint enable` 披露摘要目标与内容，并请求本组件自己的本地存储读写授权。
+开启本身不调用模型。实际交互结束后，`/hint refresh` 以当时主会话的 provider/model
+生成最新 Session/Turn 卡片；它们只是界面参考，不写入主模型上下文或原会话。
+`/hint view` 或默认 `Alt+O` 展开/收起，`Esc` 返回，草稿不丢失；
+`/hint disable` 停止后续更新并取消进行中的摘要，不删除已存卡片。
+禁用后重启再开启，会直接恢复仍适用的卡片，不因此调用摘要模型。
+
+改键：在 `dsh-tui` 配置中设置 `contextHintShortcut: alt+p`，或环境变量
+`DSH_TUI_HINT_SHORTCUT=alt+p`；显式配置优先，空字符串关闭快捷键但保留命令。
+既有保留键、用户自定义内置键和模态界面优先；冲突时使用 `/hint view`。
+
+每次手动请求总输入最多 12,000 字符，只选择最近用户/助手/工具文字与实际轮次结果，
+不复制原系统提示、工具定义或整份会话日志；本地接收上限 16,000 字符（含思考），
+请求 2,048 输出 tokens，15 秒超时。这些不是费用保证，也不是所有 provider 的远端 token 硬上限。
+不进行自动 repair/retry；失败保留最后有效卡片并标记，`/hint retry` 是一次明确的新请求。
+内置 Codex OAuth 摘要使用同一已注册 adapter 的请求局部 SSE 快照，避免隐藏 WS 重试，
+不改变主会话配置；不能确认该能力的 Codex owner 明确失败，不更换模型。
+其他自定义 adapter 的内部网络行为不作通用保证。
+
+只保存每个项目的开启状态及各会话最新卡片，不新增原始提示、工具结果或摘要历史档案。
+摘要本身可能敏感，存储不宣称加密；Git linked worktree 共享项目身份，独立 clone 不共享。
+本阶段仅手动 Session/Turn 卡片：自动生成、独立摘要模型、共享 Project 卡片与删除界面仍在后续 tickets。
+
 ## 快捷键与鼠标
 
 `Enter` 发送 · `Tab` 补全 · `Ctrl+Enter` 打断并发送 · `Alt+Up` 取回上一条 · `Esc` 逐层关闭，空输入双击回溯 · `Ctrl+O` 详情 · `Ctrl+R` 搜历史 · `Ctrl+V` 粘贴 · `Ctrl+Shift+E` 全屏草稿编辑器 · `?` 快捷键 · `←` 转后台。

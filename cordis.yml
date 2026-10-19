@@ -57,6 +57,7 @@
   inject: [agents, tuiWorkspaces, tuiScenes, tuiDialogs, tuiStatus, tuiShortcuts, tuiRenderers, tuiThemes]
   config:
     provider: deepseek-official
+    # contextHintShortcut: alt+o # '' disables the key; /hint view remains.
     # Alt-screen fullscreen 布局: 应用内鼠标选区（选择即复制, OSC 52 +
     # wl-copy/xclip/xsel 兜底）、滚轮滚动、双击选词/三击选行。false 则退回
     # inline 渲染, 鼠标交给终端模拟器原生选择。

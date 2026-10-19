@@ -543,6 +543,7 @@ export async function apply(ctx: Context, runtimeConfig: RuntimeConfig<Config>, 
     // (the Config owner's Loader id; custom ids are supported). Chat and the
     // channel's own settings reads look the section up by it.
     settingsNs: tuiSettingsNs,
+    contextHintShortcut: config.contextHintShortcut ?? process.env.DSH_TUI_HINT_SHORTCUT,
     model: displayRoute.model,
     // The activity projection only pushes on change; read the current value as
     // soon as this session binds so a resumed or reattached session renders its

@@ -182,6 +182,9 @@ export interface Config {
    *  session summarizes its recent activity into a dim line at the bottom of
    *  the transcript. On by default; off leaves `/recap` as the manual path. */
   recapOnOpen?: boolean
+  /** Context Hint detail shortcut; empty disables it, preserving /hint view.
+   * Explicit config wins over DSH_TUI_HINT_SHORTCUT, then Alt+O. */
+  contextHintShortcut?: string
   /** Status-footer field visibility and compact presentation preferences. */
   statusBar?: Partial<StatusBarConfig>
   /** Built-in action-shortcut overrides (`paste: 'alt+v'`), keyed by action
@@ -259,6 +262,7 @@ export const Config: Schema<Config, RuntimeConfig<Config>> = editableConfig<Conf
   // `false`, and the read site already treats undefined as on
   // (`describe().value.recapOnOpen !== false`, see channel.ts).
   recapOnOpen: Schema.boolean(),
+  contextHintShortcut: Schema.string().required(false),
   statusBar: Schema.object({
     compact: Schema.boolean().default(DEFAULT_STATUS_BAR.compact),
     model: Schema.boolean().default(DEFAULT_STATUS_BAR.model),
