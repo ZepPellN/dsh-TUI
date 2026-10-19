@@ -58,7 +58,8 @@ export async function consentHintStorage(runtime: AdapterRuntimeOptions, signal:
         grants[HINT_COMPONENT_ID].push({ name, scope: HINT_COMPONENT_ID })
       }
     }
+    // Legacy locks cannot cancel acquisition; recheck after waiting, before granting.
     if (signal.aborted) throw new Error('Context Hint consent cancelled')
     await writeFileAtomic(file, JSON.stringify({ ...table, grants }), { mode: 0o600, dirMode: 0o700 })
-  }, { signal, waitMs: 3000 })
+  }, { waitMs: 3000 })
 }
