@@ -19,7 +19,7 @@ export const HINT_MANIFEST = JSON.stringify({
   version: '0.12.0',
   facets: { host: { entry: 'lib/types/dsh-adapter/context-hint/extension.js', apiVersion: 'v1alpha1' } },
   requires: { contracts: [{ apiVersion: 'storage.dsh/v1alpha1', kind: 'LocalStorage' }] },
-  permissions: permissions.map(name => ({ name, scope: HINT_COMPONENT_ID, reason: 'Persist latest project opt-in and Session/Turn cards' })),
+  permissions: permissions.map(name => ({ name, scope: HINT_COMPONENT_ID, reason: 'Persist project opt-in, Summary Model choice and latest Session/Turn cards' })),
   contributes: { commands: [] },
   subscriptions: [],
   license: 'MIT',

@@ -36,3 +36,5 @@ not an assertion that all TUI features or alternate entry points are covered.
 - [Normal exit](exit.md): `/exit`, persisted marker, zero exit and terminal reset.
 - [Manual Context Hint](context-hint.md): explicit consent, bounded requests,
   Session/Turn detail, Last Valid failures, remap/command-only and late results.
+- [Summary Model](context-hint-selection.md): independent selection, destination,
+  restart and unavailable-model failures through ordinary commands.

@@ -281,11 +281,21 @@ Full guide: [Session migration](docs/migrate.en.md).
 Off by default. `/hint enable` discloses the destination and selected content,
 then requests only this component's own local-storage read/write permissions.
 Enabling makes no model call. After a real interaction settles, `/hint refresh`
-generates the latest Session/Turn cards with the current main provider/model.
+generates the latest Session/Turn cards, inheriting the current main provider/model by default.
 Cards are display-only: never appended to the transcript or main-model context.
 Use `/hint view` or default `Alt+O` to expand/collapse, `Esc` to return without
 losing the draft. `/hint disable` cancels pending work but retains saved cards.
 Re-enabling after a disabled restart restores applicable cards without a summary call.
+
+`/hint model` shows the current Summary Model and host catalog (first12 entries).
+Use `/hint model provider/model` for an independent choice, or `/hint model inherit`
+for per-request inheritance. Enable first for own-storage consent. Saving requires
+destination/content disclosure again; cancelling leaves the choice unchanged.
+Only the route preference is saved in this component's namespace for the current
+TUI data home, surviving restart. No credentials are copied and the main session
+model never changes. Saving generates nothing and cancels old in-flight results.
+If a saved destination disappears or its configuration becomes invalid, refresh
+fails explicitly without fallback, retaining any applicable Last Valid card.
 
 Set `contextHintShortcut: alt+p` in the `dsh-tui` config, or set
 `DSH_TUI_HINT_SHORTCUT=alt+p`. Explicit config wins; an empty string disables
@@ -305,11 +315,11 @@ configuration unchanged. An unacknowledged Codex owner fails explicitly without
 switching models. Internal network behavior of arbitrary custom adapters is
 not universally guaranteed.
 
-Only project opt-in and each session's latest cards persist: no additional raw
+Only project opt-in, Summary Model choice and each session's latest cards persist: no additional raw
 prompt/tool-output or generation-history archive. Summaries may be sensitive
 and storage is not claimed to be encrypted. Linked Git worktrees share project
 identity; separate clones do not. This stage provides manual Session/Turn cards
-only; automatic generation, independent summary-model selection, shared Project
+only; automatic generation, shared Project
 cards and deletion controls remain in subsequent tickets.
 
 ## Keybindings & Mouse

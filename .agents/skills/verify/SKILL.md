@@ -176,3 +176,14 @@ The storage supplement uses the real admitted storage runtime and a real
 contended file lock; invalidation rejects the commit without replacing Last
 Valid. The command-only packed journey also disables, restarts, re-enables
 without a hint call and checks Last Valid after a failed explicit refresh.
+
+For independent Summary Model selection (#4), follow
+[the selection journey](features/context-hint-selection.md):
+
+```sh
+node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-selection --evidence "$DSH_VERIFY_EVIDENCE"
+node --import tsx/esm scripts/verify-context-hint-selection.ts
+```
+
+The profile-wide route preference is saved through admitted component storage.
+No host settings, production credentials or user profile are changed.

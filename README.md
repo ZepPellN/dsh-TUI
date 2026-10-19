@@ -197,11 +197,18 @@ CLI 形态：任意终端运行 `dsh-tui migrate ...`，与 TUI 内执行同一�
 ## Context Hint（手动恢复卡片）
 
 默认关闭；`/hint enable` 披露摘要目标与内容，并请求本组件自己的本地存储读写授权。
-开启本身不调用模型。实际交互结束后，`/hint refresh` 以当时主会话的 provider/model
+开启本身不调用模型。实际交互结束后，`/hint refresh` 默认以当时主会话的 provider/model
 生成最新 Session/Turn 卡片；它们只是界面参考，不写入主模型上下文或原会话。
 `/hint view` 或默认 `Alt+O` 展开/收起，`Esc` 返回，草稿不丢失；
 `/hint disable` 停止后续更新并取消进行中的摘要，不删除已存卡片。
 禁用后重启再开启，会直接恢复仍适用的卡片，不因此调用摘要模型。
+
+`/hint model` 展示当前 Summary Model 与宿主模型目录（最多显示12项）；
+`/hint model provider/model` 独立选择，`/hint model inherit` 恢复按请求继承。
+先开启以取得自己的存储授权；保存前再次披露目标及发送内容，取消不改变选择。
+选择保存在本组件命名空间中，对当前 TUI 数据目录生效，重启后保留；不另存凭据，
+不切换主会话模型。保存不触发生成，并取消旧选择下的进行中请求。
+目录由宿主提供；已保存的目标消失或配置失效时刷新明确失败，不静默回退，保留适用的最后有效卡片。
 
 改键：在 `dsh-tui` 配置中设置 `contextHintShortcut: alt+p`，或环境变量
 `DSH_TUI_HINT_SHORTCUT=alt+p`；显式配置优先，空字符串关闭快捷键但保留命令。
@@ -215,9 +222,9 @@ CLI 形态：任意终端运行 `dsh-tui migrate ...`，与 TUI 内执行同一�
 不改变主会话配置；不能确认该能力的 Codex owner 明确失败，不更换模型。
 其他自定义 adapter 的内部网络行为不作通用保证。
 
-只保存每个项目的开启状态及各会话最新卡片，不新增原始提示、工具结果或摘要历史档案。
+只保存每个项目的开启状态、Summary Model 选择及各会话最新卡片，不新增原始提示、工具结果或摘要历史档案。
 摘要本身可能敏感，存储不宣称加密；Git linked worktree 共享项目身份，独立 clone 不共享。
-本阶段仅手动 Session/Turn 卡片：自动生成、独立摘要模型、共享 Project 卡片与删除界面仍在后续 tickets。
+本阶段仅手动 Session/Turn 卡片：自动生成、共享 Project 卡片与删除界面仍在后续 tickets。
 
 ## 快捷键与鼠标
 

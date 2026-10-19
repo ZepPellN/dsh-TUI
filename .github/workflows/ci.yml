@@ -633,6 +633,8 @@ jobs:
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-failures --hint-shortcut=alt+p --evidence "$RUNNER_TEMP/dsh-hint-failures"
       - name: Context Hint command-only detail
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-shortcut= --evidence "$RUNNER_TEMP/dsh-hint-command-only"
+      - name: Context Hint independent Summary Model, restart and unavailable destination
+        run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-selection --evidence "$RUNNER_TEMP/dsh-hint-selection"
       - name: Retain packed host proof, including failed attempts
         if: always()
         uses: actions/upload-artifact@v7
@@ -643,6 +645,7 @@ jobs:
             ${{ runner.temp }}/dsh-hint-fences/
             ${{ runner.temp }}/dsh-hint-failures/
             ${{ runner.temp }}/dsh-hint-command-only/
+            ${{ runner.temp }}/dsh-hint-selection/
           retention-days: 7
           if-no-files-found: error
 

@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { createHintPrompt, hintTurnOutcome } from './input.js'
 import { HINT_OUTPUT_CHARS, parseHintResult } from './result.js'
 import { prepareHintCall } from '../oauth/summary-call.js'
+import { resolveHintRoute, type HintSelection } from './selection.js'
 
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap { 'dsh-tui-context-hint': { kind: 'dsh-tui-context-hint' } }
@@ -15,6 +16,7 @@ export const HINT_MAX_TOKENS = 2048
 export async function requestHint(ctx: Context, request: {
   provider: string
   model: string
+  selection: HintSelection
   events: readonly { type: string; data: unknown }[]
   signal: AbortSignal
 }) {
@@ -33,7 +35,9 @@ export async function requestHint(ctx: Context, request: {
   })
   const collect = async () => {
     signal.throwIfAborted()
-    const call = await prepareHintCall(llm, { provider: request.provider, model: request.model, maxTokens: HINT_MAX_TOKENS }, signal)
+    const route = await resolveHintRoute(llm, request.selection, { provider: request.provider, model: request.model })
+    signal.throwIfAborted()
+    const call = await prepareHintCall(llm, { ...route, maxTokens: HINT_MAX_TOKENS }, signal)
     signal.throwIfAborted()
     let source = ''
     let produced = 0

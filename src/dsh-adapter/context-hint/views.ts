@@ -10,6 +10,7 @@ export interface HintView {
   enabled: boolean
   cards?: HintResult
   failed: boolean
+  model?: string
 }
 
 /** Plain, bounded display data; host React/hooks only, never Markdown or ANSI. */
@@ -50,6 +51,7 @@ export function hintViews(read: () => HintView, subscribe: (listener: () => void
           line(t('hint-project'), cleanRenderText(owner.project, Math.max(8, columns - 12))),
           line(t('hint-worktree'), cleanRenderText(owner.worktree, Math.max(8, columns - 12))),
           line(t('hint-session'), cleanRenderText(owner.session, 80)),
+          view.model === undefined ? null : e(ui.Text, { key: 'summary-model' }, view.model),
           view.failed ? e(ui.Text, { color: 'warning' }, t('hint-failed')) : null,
           e(ui.Text, { bold: true }, t('hint-session-card')),
           ...(card === undefined ? [e(ui.Text, { key: 'pending' }, t('hint-pending'))] : [

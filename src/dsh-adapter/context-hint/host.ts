@@ -8,6 +8,7 @@ import { applyHintExtension, type HintDependencies } from './extension.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { TuiDialogConfirmRequest } from '../dialogs.js'
 import { logMouseDebug } from '../../utils/debug.js'
+import { hintSelectionFromCommand, listHintModels, resolveHintRoute, HintSelectionError } from './selection.js'
 
 export function createContextHintHost(ctx: Context, deps: HintDependencies) {
   if (typeof ctx.plugin !== 'function' || ctx.get('tuiPluginHost') === undefined) return { run() { deps.notify(t('hint-unavailable')) } }
@@ -48,11 +49,38 @@ export function createContextHintHost(ctx: Context, deps: HintDependencies) {
   const run = async (input: string) => {
     const action = input.trim()
     logMouseDebug('context-hint command', { action: action === 'enable' || action === 'disable' ? action : 'other' })
-    if (action === 'enable') {
+    if (action === 'model' || action.startsWith('model ')) {
+      if (mounting !== undefined) await mounting
+      if (extension === undefined) { deps.notify(t('hint-help')); return }
+      const chosen = action.slice('model'.length).trim()
+      if (chosen === '') {
+        const models = await listHintModels(ctx.get('llm'))
+        deps.notify(`${extension.modelDescription()}\n${t('hint-model-available', { routes: models.slice(0, 12).map(route => `${route.provider}/${route.model}`).join(' · ') })}`)
+        return
+      }
       if (consent !== undefined) return
+      const next = hintSelectionFromCommand(chosen)
+      const capture = deps.binding.capture()
+      const cwd = deps.cwd()
+      const controller = new AbortController()
+      consent = controller
+      const signal = AbortSignal.any([controller.signal, deps.owner.signal])
+      const unsubscribe = deps.subscribe(() => { if (!deps.binding.isCurrent(capture) || cwd !== deps.cwd()) controller.abort() })
+      try {
+        await control.await()
+        const route = await resolveHintRoute(ctx.get('llm'), next, deps.route())
+        if (signal.aborted) return
+        const accepted = await confirm?.({ title: t('hint-model-consent-title'),
+          message: t('hint-consent', { route: `${route.provider}/${route.model}` }), signal })
+        if (accepted && !signal.aborted && deps.binding.isCurrent(capture) && cwd === deps.cwd()) await extension.selectModel(next)
+      } finally { unsubscribe(); if (consent === controller) consent = undefined }
+    } else if (action === 'enable') {
+      if (consent !== undefined) return
+      if (hintStorageGranted(runtime)) await mount()
       const captureCwd = deps.cwd()
       const capture = deps.binding.capture()
-      const route = deps.route()
+      const route = extension === undefined ? deps.route() : extension.destination()
+      if (route === undefined) throw new HintSelectionError('Invalid Summary Model preference')
       const controller = new AbortController()
       consent = controller
       const signal = AbortSignal.any([controller.signal, deps.owner.signal])
@@ -87,7 +115,8 @@ export function createContextHintHost(ctx: Context, deps: HintDependencies) {
     // pending UI promise would make its settlement touch an expired UI lease
     // when /exit cancels a held summary request.
     run(input: string) {
-      void run(input).catch(() => { if (deps.owner.current()) deps.notify(t('hint-unavailable')) })
+      void run(input).catch(error => { if (deps.owner.current()) deps.notify(error instanceof HintSelectionError
+        ? t('hint-model-unavailable', { model: extension?.modelDescription() ?? '' }) : t('hint-unavailable')) })
     },
   }
 }
