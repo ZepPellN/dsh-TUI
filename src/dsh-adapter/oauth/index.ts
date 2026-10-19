@@ -56,6 +56,7 @@ import { createAuthCommandHandler } from './command.js'
 import type { PiAiAuthContext } from './pi-ai.js'
 import { createDeepSeekCallbackOriginResolver, deepSeekAccountFrom } from './deepseek.js'
 import { WhaleCouponStore } from './bonus.js'
+import { createSummaryProfiles, registerSummaryPreparation } from './summary-call.js'
 
 export const name = 'dsh-auth'
 /**
@@ -186,6 +187,7 @@ export function apply(ctx: Context, config: Config): void {
   // a per-model miss is refused per route (see buildOAuthProfile).
   const profiles = new Map(configured.map(id => [id, buildOAuthProfile(id, overrides[id])]))
   const store = new CredentialFile(config.credentialsFile ?? defaultCredentialsFile())
+  const summaryProfiles = createSummaryProfiles(profiles)
 
   // Fail closed on store trouble: a credential file that cannot be read
   // must not surface forty models that would all fail at request time.
@@ -198,9 +200,9 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   const adapter = new CredentialGatedAdapter({
-    // One immutable map for the plugin's lifetime: the snapshot memoizes on
-    // identity, and route changes here always mean a plugin remount anyway.
-    profiles: () => profiles,
+    // Ordinary calls retain one immutable map. Only owned summary preparation
+    // reads a request-local SSE snapshot; main calls never see that override.
+    profiles: summaryProfiles.read,
     // No route ever names an api-key credential, so the override stays
     // undefined and every request authenticates through the collection's
     // own auth — the OAuth credential this plugin's store holds.
@@ -250,7 +252,11 @@ export function apply(ctx: Context, config: Config): void {
       // rest (the registry keeps the previous owner serving).
       for (const id of configured) {
         try {
-          releases.push(llm.registerAdapter([id], adapter))
+          const unregister = llm.registerAdapter([id], adapter)
+          try {
+            const releaseSummary = registerSummaryPreparation(llm, id, summaryProfiles)
+            releases.push(() => { releaseSummary(); unregister() })
+          } catch (error) { unregister(); throw error }
         } catch (error: unknown) {
           ctx.logger.error(
             `dsh-auth: route "${id}" was not registered: ${error instanceof Error ? error.message : String(error)} `

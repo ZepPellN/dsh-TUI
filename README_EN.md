@@ -276,6 +276,41 @@ Full guide: [Session migration](docs/migrate.en.md).
 
 **VS Code**: use the integrated terminal or the `dsh-tui-vscode` extension. See [VS Code guide](docs/vscode.en.md). **Herdr**: run `dsh-tui` in a [Herdr](https://herdr.dev) pane; `idle` / `working` / `blocked` are reported through its local integration API.
 
+## Context Hint (manual recovery cards)
+
+Off by default. `/hint enable` discloses the destination and selected content,
+then requests only this component's own local-storage read/write permissions.
+Enabling makes no model call. After a real interaction settles, `/hint refresh`
+generates the latest Session/Turn cards with the current main provider/model.
+Cards are display-only: never appended to the transcript or main-model context.
+Use `/hint view` or default `Alt+O` to expand/collapse, `Esc` to return without
+losing the draft. `/hint disable` cancels pending work but retains saved cards.
+
+Set `contextHintShortcut: alt+p` in the `dsh-tui` config, or set
+`DSH_TUI_HINT_SHORTCUT=alt+p`. Explicit config wins; an empty string disables
+the key, preserving `/hint view`. Reserved keys, user-remapped built-ins and
+modals take priority; use the command on conflict.
+
+Each manual request selects at most 12,000 input characters of recent human,
+assistant and tool text plus actual turn outcomes, without the original system
+prompt, tool definitions or whole session log. Local output accumulation is
+limited to 16,000 characters including reasoning, with 2,048 output tokens
+requested and a 15-second deadline. These are not a spending guarantee or a
+universal remote token cap. There is no automatic repair/retry. Failure retains
+the Last Valid card with a marker; `/hint retry` explicitly makes one new request.
+Built-in Codex OAuth summaries use the same registered adapter with a
+request-local SSE snapshot to avoid hidden WebSocket retries, leaving main
+configuration unchanged. An unacknowledged Codex owner fails explicitly without
+switching models. Internal network behavior of arbitrary custom adapters is
+not universally guaranteed.
+
+Only project opt-in and each session's latest cards persist: no additional raw
+prompt/tool-output or generation-history archive. Summaries may be sensitive
+and storage is not claimed to be encrypted. Linked Git worktrees share project
+identity; separate clones do not. This stage provides manual Session/Turn cards
+only; automatic generation, independent summary-model selection, shared Project
+cards and deletion controls remain in subsequent tickets.
+
 ## Keybindings & Mouse
 
 `Enter` send · `Tab` complete · `Ctrl+Enter` interrupt and send · `Alt+Up` recall the last message · `Esc` dismiss, double-`Esc` rewinds · `Ctrl+O` details · `Ctrl+R` history · `Ctrl+V` paste · `Ctrl+Shift+E` fullscreen draft editor · `?` shortcuts · `←` background the session.

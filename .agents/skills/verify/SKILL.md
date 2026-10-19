@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Drive dsh-TUI's real packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Use to verify startup, synthetic-provider conversation, persistence/resume and clean terminal exit after compatibility or packaging changes.
+description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, manual Context Hint consent/cards/failures/shortcuts/lifecycle, and clean terminal exit with synthetic providers only.
 ---
 
 # Verify dsh-TUI
@@ -104,7 +104,7 @@ skipped or timed-out entry is not a pass. Never substitute a source-loader
 smoke, fake channel or setter for this journey. No publishing, tags, production
 profile updates, branch rules or external GitHub writes are part of the driver.
 
-The mapped journeys cover #2, not the whole application. Report which entry
+The mapped journeys cover #2 and manual #3, not the whole application. Report which entry
 point actually ran. Other resume aliases/pickers and unrelated features need
 their own journeys; a CLI-ID resume does not prove them.
 
@@ -148,3 +148,27 @@ continue/flush/reopen, the isolated SQLite migration, and execution of the real
 CI aggregate shell against failed/cancelled/skipped/missing results. Linux and
 macOS remote workflow execution is only proven by actual CI runs, not YAML.
 Use `/maintain-verification-skill` when application paths change.
+
+For manual Context Hint, follow [the feature journey](features/context-hint.md).
+Every flag must accompany `--context-hint`; generation cases also require
+`--hint-refresh`. Use a new evidence directory per `roundtrip`:
+
+```sh
+node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-lifecycle --hint-fences --evidence "$DSH_VERIFY_EVIDENCE"
+node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-failures --hint-shortcut=alt+p --evidence "$DSH_VERIFY_EVIDENCE"
+node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-shortcut= --evidence "$DSH_VERIFY_EVIDENCE"
+```
+
+Do not combine `--hint-fences` and `--hint-failures`: the fence journey ends
+with a deliberately held request at normal exit. Flags are selected at Drive
+time, except `--hint-shortcut=alt+p` / `--hint-shortcut=` which must also be
+passed to Launch to create the isolated deployment overlay. The remap overlay
+deliberately conflicts with an `alt+k` environment setting, proving explicit
+config wins. The empty setting preserves command-only use.
+
+Supplemental public-boundary scripts (not substitutes for the packed journey):
+`node --import tsx/esm scripts/verify-context-hint-{command,input,result,project,transport}.ts`
+(run each expanded path separately). The transport script uses the real host
+and registered OAuth adapter plus synthetic HTTP/WebSocket boundaries; no real
+login or paid provider call. Distinguish those checks from a packed native
+DeepSeek journey and from real-provider behavior.

@@ -462,6 +462,7 @@
       # verify-workspace-attachment.mjs asserts the name→inject distance.)
       config:
         provider: deepseek-official
+        # contextHintShortcut: alt+o # '' disables the key; /hint view remains.
         # Alt-screen fullscreen 布局：应用内鼠标选区（选择即复制, OSC 52 +
         # wl-copy/xclip/xsel 兜底）、滚轮滚动、双击选词/三击选行。出厂默认开启，
         # 与 schema 默认（index.ts fullscreen default true）保持一致——两处必须

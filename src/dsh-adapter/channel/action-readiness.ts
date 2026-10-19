@@ -60,6 +60,7 @@ export type ChannelActionDelegates = Pick<ChannelState,
   | 'renameSession'
   | 'setSessionColor'
   | 'recapRecent'
+  | 'contextHint'
   | 'deleteSession'
   | 'renameSessionTo'
   | 'compact'
@@ -145,6 +146,7 @@ export function createChannelActionMethods(
     renameSession: title => getReadyActions().renameSession(title),
     setSessionColor: color => getReadyActions().setSessionColor(color),
     recapRecent: options => getReadyActions().recapRecent(options),
+    contextHint: input => getReadyActions().contextHint(input),
     deleteSession: sessionId => getReadyActions().deleteSession(sessionId),
     renameSessionTo: (sessionId, title) => getReadyActions().renameSessionTo(sessionId, title),
     compact: () => getReadyActions().compact(),

@@ -1,6 +1,6 @@
 # dsh-TUI verification map
 
-This maintained seed map covers issue #2's real packed-host user paths. It is
+This map covers #2's real packed-host user paths and #3's manual hints. It is
 not an assertion that all TUI features or alternate entry points are covered.
 
 ## Baseline preconditions
@@ -34,3 +34,5 @@ not an assertion that all TUI features or alternate entry points are covered.
 - [New chat](new-chat.md): first-run Sessions picker, usable composer and reply.
 - [Resume by ID](resume.md): saved session in a new process, history and continue.
 - [Normal exit](exit.md): `/exit`, persisted marker, zero exit and terminal reset.
+- [Manual Context Hint](context-hint.md): explicit consent, bounded requests,
+  Session/Turn detail, Last Valid failures, remap/command-only and late results.

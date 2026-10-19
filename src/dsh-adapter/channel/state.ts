@@ -23,6 +23,7 @@ export interface ChannelLaunchOptions {
    *  literal `'dsh-tui'` here would silently miss custom mounts. Absent →
    *  `'dsh-tui'` (direct `createChannel` embedders and fixtures). */
   settingsNs?: string
+  contextHintShortcut?: string
   diffLayout?: 'auto' | 'split' | 'unified'
   thinkingFold?: 'fold' | 'preview' | 'full'
   /** Collapsed tool-card body line budget (0 = header-only, grok-style). */

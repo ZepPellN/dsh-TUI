@@ -533,6 +533,8 @@ export interface ChannelUi {
    *  summary plus an optional proposed title. The answer is pure UI state
    *  and never enters the session log. */
   recapRecent(options?: { signal?: AbortSignal; onText?: (delta: string) => void }): Promise<RecapOutcome>
+  /** Manual Context Hint control; display-only cards never enter the transcript. */
+  contextHint(input: string): void
   /** Delete a persisted session (`/resume` picker ctrl+d): removes its log
    *  directory, its last-used entry, and the resume marker when it points
    *  here. False for the live session or a missing/unwritable log. */
