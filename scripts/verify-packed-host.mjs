@@ -135,6 +135,7 @@ async function drive() {
       save('provider-requests.json', requests)
       const last = [...json.messages].reverse().find(m => m.role === 'user')
       const text = JSON.stringify(last?.content)
+      const primaryFirst = Array.isArray(last?.content) && last.content.some(block => block.type === 'text' && block.text.startsWith('VERIFY_FIRST:'))
       const hint = text.includes('CONTEXT_HINT_V1')
       if (hint && hintResponse === 'transport') { res.destroy(); return }
       if (hint && (hintResponse === '429' || hintResponse === '503')) {
@@ -147,8 +148,9 @@ async function drive() {
         : hint && hintResponse === 'overflow' ? 'x'.repeat(16001) : hint ? JSON.stringify({
         session: { goal: 'Summarize this interaction', status: hintResponse === 'hold' ? 'LATE_WRONG_HINT' : 'BOUNDARY_SUMMARY_OK', blockers: [], next: hintResponse === 'hold-valid' ? 'BACKGROUND_NEXT_CHECK' : 'NEXT_CHECK' },
         turn: { completed: ['Reply acknowledged'], findings: [], verification: ['Synthetic provider fixture only'], failures: [], outcome: 'completed' },
-      }) : text.includes('VERIFY_SECOND') ? 'DSH_VERIFY_RESTORED_OK'
-        : text.includes('VERIFY_FIRST') ? (hintUi ? 'DSH_VERIFY_FIRST_OK\n' + Array.from({ length: 45 }, (_, i) => `HINT_SCROLL_${String(i).padStart(2, '0')}`).join('\n') + '\n' : '') + 'DSH_VERIFY_FIRST_OK' : 'DSH_VERIFY_RECAP_OK'
+      }) : text.includes('Create a compact session recap') ? JSON.stringify({ title: 'Synthetic recap', summary: 'DSH_VERIFY_RECAP_OK' })
+        : text.includes('VERIFY_SECOND') ? 'DSH_VERIFY_RESTORED_OK'
+        : text.includes('VERIFY_FIRST') ? (hintUi && primaryFirst ? 'DSH_VERIFY_FIRST_OK\n' + Array.from({ length: 45 }, (_, i) => `HINT_SCROLL_${String(i).padStart(2, '0')}`).join('\n') + '\n' : '') + 'DSH_VERIFY_FIRST_OK' : 'DSH_VERIFY_RECAP_OK'
       const respond = () => {
         if (res.destroyed) return
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
@@ -432,11 +434,12 @@ async function drive() {
             const card = text => Object.values(JSON.parse(text)).find(value => value.cards)?.cards
             for (const failure of ['malformed', '429', '503', 'transport', 'overflow', 'timeout']) {
               const before = requests.filter(request => JSON.stringify(request.body.messages).includes('CONTEXT_HINT_V1')).length
+              const beforeFailure = readFileSync(join(state.scratch, 'home/.dsh-tui/plugin-storage/dsh-tui.context-hint.json'), 'utf8')
               hintResponse = failure
               await type('/hint refresh')
               await wait(`hint-last-valid-${failure}`, () => screen().includes('Update failed') && screen().includes('BOUNDARY_SUMMARY_OK'))
               const after = readFileSync(join(state.scratch, 'home/.dsh-tui/plugin-storage/dsh-tui.context-hint.json'), 'utf8')
-              assert.deepEqual(card(after), card(stored), `${failure}: actual Last Valid retained`)
+              assert.deepEqual(card(after), card(beforeFailure), `${failure}: actual Last Valid retained`)
               assert.equal(requests.filter(request => JSON.stringify(request.body.messages).includes('CONTEXT_HINT_V1')).length, before + 1, `${failure}: no repair or retry`)
               if (failure !== 'timeout') {
                 hintResponse = 'valid'
