@@ -37,6 +37,9 @@ composer after the hydrated Sessions picker:
   the next refresh; held responses across disable and `/exit` cannot write.
 - Every process exits normally with terminal restoration, not forced cleanup
   masquerading as success.
+- Command-only variant additionally disables, restarts the same session and
+  enables again: retained applicable cards return without a new hint call;
+  a failed explicit refresh still retains them as Last Valid.
 
 ## Evidence and Cleanup
 

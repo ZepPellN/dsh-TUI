@@ -449,6 +449,10 @@ async function drive() {
               }
             }
           }
+          if (hintShortcut === '') {
+            await type('/hint disable')
+            await wait('hint-disabled-before-restart', () => !screen().includes('BOUNDARY_SUMMARY_OK') && !screen().includes('Pending update'))
+          }
         }
       })
       if (hintFences) {
@@ -461,6 +465,23 @@ async function drive() {
         await session('hint-restored', ['--resume', resume], async ({ wait, screen }) => {
           await wait('last-valid-restored', () => screen().includes('Update failed') && screen().includes('BOUNDARY_SUMMARY_OK'))
           assert.equal(requests.filter(request => JSON.stringify(request.body.messages).includes('CONTEXT_HINT_V1')).length, count, 'restore makes no new hint request')
+        })
+      }
+      if (hintShortcut === '') {
+        const resume = readFileSync(join(state.scratch, 'home/.dsh-tui/resume.txt'), 'utf8').trim()
+        const countHints = () => requests.filter(request => JSON.stringify(request.body.messages).includes('CONTEXT_HINT_V1')).length
+        const beforeEnable = countHints()
+        await session('hint-reenabled', ['--resume', resume], async ({ type, wait, screen, send }) => {
+          assert(!screen().includes('BOUNDARY_SUMMARY_OK'), 'disabled state persists across restart')
+          await type('/hint enable')
+          await wait('consent', () => consentVisible(screen()))
+          send('\r')
+          await wait('retained-cards', () => screen().includes('BOUNDARY_SUMMARY_OK'))
+          assert.equal(countHints(), beforeEnable, 're-enable restores retained cards without a new hint request')
+          hintResponse = 'malformed'
+          await type('/hint refresh')
+          await wait('retained-last-valid', () => screen().includes('Update failed') && screen().includes('BOUNDARY_SUMMARY_OK'))
+          assert.equal(countHints(), beforeEnable + 1, 'failed refresh retains the restored Last Valid without repair')
         })
       }
       save('result.json', { passed: true, target, feature: hintRefresh ? 'context-hint-refresh' : 'context-hint-consent',

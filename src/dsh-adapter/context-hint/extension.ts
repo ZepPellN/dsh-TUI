@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { TuiPluginStorage } from '../plugin-storage.js'
+import { withStorageWriteGuard } from '../plugin-storage.js'
 import { resolveHintProject, type HintProject } from './project.js'
 import { t } from '../../i18n.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -121,11 +122,9 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       const target = await resolveHintProject(cwd)
       const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
       if (!current()) return
-      await storage.set({ key: target.key, value: { identity: target.id, enabled: true } })
+      await withStorageWriteGuard(current, () => storage.set({ key: target.key, value: { identity: target.id, enabled: true } }))
       if (!current()) return
-      project = target
-      enabled = true
-      publish()
+      await boundLoad()
     }),
     disable: AsyncLocalStorage.bind(async () => {
       request?.abort()
@@ -156,7 +155,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
           signal: AbortSignal.any([controller.signal, deps.owner.signal]),
         })
         if (!current()) return
-        await storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset, cards: result, ...route } })
+        await withStorageWriteGuard(current, () => storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset, cards: result, ...route } }))
         if (!current()) return
         cards = result
         cardOffset = eventOffset
@@ -169,7 +168,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
           deps.notify(t('hint-update-failed'))
           if (cards !== undefined) {
             try {
-              await storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset: cardOffset, cards, failed: true, ...route } })
+              await withStorageWriteGuard(current, () => storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset: cardOffset, cards, failed: true, ...route } }))
             } catch { /* Last Valid remains visible even when storage itself failed. */ }
           }
         }

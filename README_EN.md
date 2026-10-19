@@ -285,6 +285,7 @@ generates the latest Session/Turn cards with the current main provider/model.
 Cards are display-only: never appended to the transcript or main-model context.
 Use `/hint view` or default `Alt+O` to expand/collapse, `Esc` to return without
 losing the draft. `/hint disable` cancels pending work but retains saved cards.
+Re-enabling after a disabled restart restores applicable cards without a summary call.
 
 Set `contextHintShortcut: alt+p` in the `dsh-tui` config, or set
 `DSH_TUI_HINT_SHORTCUT=alt+p`. Explicit config wins; an empty string disables

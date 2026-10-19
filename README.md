@@ -201,6 +201,7 @@ CLI 形态：任意终端运行 `dsh-tui migrate ...`，与 TUI 内执行同一�
 生成最新 Session/Turn 卡片；它们只是界面参考，不写入主模型上下文或原会话。
 `/hint view` 或默认 `Alt+O` 展开/收起，`Esc` 返回，草稿不丢失；
 `/hint disable` 停止后续更新并取消进行中的摘要，不删除已存卡片。
+禁用后重启再开启，会直接恢复仍适用的卡片，不因此调用摘要模型。
 
 改键：在 `dsh-tui` 配置中设置 `contextHintShortcut: alt+p`，或环境变量
 `DSH_TUI_HINT_SHORTCUT=alt+p`；显式配置优先，空字符串关闭快捷键但保留命令。

@@ -603,6 +603,7 @@ const GROUPS = {
     ['verify-context-hint-result', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-result.ts']],
     ['verify-context-hint-project', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-project.ts']],
     ['verify-context-hint-transport', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-transport.ts']],
+    ['verify-context-hint-storage', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-storage.ts']],
 // L4 composition boundary plus report/metadata lifetime fences.
     ["verify-channel-composition", ['node', '--import', 'tsx/esm', 'scripts/verify-channel-composition.ts']],
 // 状态行的读侧：会话键控、变更通知、宿主发布值的防御性收窄、绑定时的基线读取

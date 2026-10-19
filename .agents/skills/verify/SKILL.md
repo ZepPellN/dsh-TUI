@@ -167,8 +167,12 @@ deliberately conflicts with an `alt+k` environment setting, proving explicit
 config wins. The empty setting preserves command-only use.
 
 Supplemental public-boundary scripts (not substitutes for the packed journey):
-`node --import tsx/esm scripts/verify-context-hint-{command,input,result,project,transport}.ts`
+`node --import tsx/esm scripts/verify-context-hint-{command,input,result,project,transport,storage}.ts`
 (run each expanded path separately). The transport script uses the real host
 and registered OAuth adapter plus synthetic HTTP/WebSocket boundaries; no real
 login or paid provider call. Distinguish those checks from a packed native
 DeepSeek journey and from real-provider behavior.
+The storage supplement uses the real admitted storage runtime and a real
+contended file lock; invalidation rejects the commit without replacing Last
+Valid. The command-only packed journey also disables, restarts, re-enables
+without a hint call and checks Last Valid after a failed explicit refresh.
