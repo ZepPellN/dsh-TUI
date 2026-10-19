@@ -50,4 +50,8 @@ The retained synthetic source/prompt bodies are test evidence, not a product
 archive. Cleanup removes only the named owned scratch; evidence survives.
 
 Supplementary parser/identity/config/transport tests are in the parent skill.
+`node --import tsx/esm scripts/verify-context-hint-storage.ts` also holds the
+real grant-file writer lock, cancels pending consent, releases the lock and
+checks that no late grant appears. It checks corrupt/explicit-deny stores and
+subsequent exact-component confirmation without weakening global default-deny.
 Remote Linux/macOS acceptance requires observed CI, not merely these recipes.
