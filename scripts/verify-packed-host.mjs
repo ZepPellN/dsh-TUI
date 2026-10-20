@@ -527,7 +527,7 @@ async function drive() {
         }
       }
       save('result.json', { passed: true, target, feature: hintSelection ? 'context-hint-selection' : hintRefresh ? 'context-hint-refresh' : 'context-hint-consent',
-        scenarios: { hintFailures, hintUi, hintLifecycle, hintFences, hintShortcut, hintSelection, hintReconsent }, requests: requests.length, platform: process.platform })
+        scenarios: { hintFailures, hintUi, hintLifecycle, hintFences, hintShortcut, hintSelection, hintReconsent: hintReconsent || hintSelection }, requests: requests.length, platform: process.platform })
       return
     }
     await session('fresh', [], async ({ type, wait, screen }) => {
