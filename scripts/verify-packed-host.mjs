@@ -16,6 +16,7 @@ import xterm from '@xterm/headless'
 import { settled, viewportLines, writeParsed } from './lib/term-test.mjs'
 import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-screen.mjs'
 import { driveSharedProject } from './lib/packed-host-project.mjs'
+import { packedKeys, runAndCleanup, failureText, groupProcesses } from './lib/packed-host-driver.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const { Terminal } = xterm
@@ -80,7 +81,7 @@ function launch() {
   assert(!existsSync(statePath), 'use a new evidence directory for each launch')
   assert(existsSync(join(root, 'lib/types/index.js')), 'run pnpm build first')
   const scratch = mkdtempSync('/tmp/dsh-packed-')
-  const state = { scratch, target, node: process.execPath, platform: process.platform, createdAt: new Date().toISOString() }
+  const state = { scratch, target, node: process.execPath, platform: process.platform, createdAt: new Date().toISOString(), cleaned: false }
   save('run.json', state) // cleanup is possible even when setup fails
   mkdirSync(join(scratch, 'home'), { recursive: true })
   mkdirSync(join(scratch, 'workspace'))
@@ -198,14 +199,21 @@ async function drive() {
     active.add(child)
     let exitCode
     let transportError
+    let processGroup
     let raw = ''
     const decoder = new StringDecoder('utf8')
     let parsing = Promise.resolve()
-    const send = data => child.stdin.write(JSON.stringify({ write: data }) + '\n')
+    const closed = new Promise(resolve => child.once('close', resolve))
+    const { send, enter } = packedKeys(data => child.stdin.write(JSON.stringify({ write: data }) + '\n'),
+      event => record({ session: label, event: 'key-sent', ...event }))
     term.onData(data => send(data)) // real terminal query replies
     const lines = createInterface({ input: child.stdout })
     lines.on('line', line => {
       const event = JSON.parse(line)
+      if (event.processGroup !== undefined) processGroup = event.processGroup
+      if (event.inputWritten !== undefined || event.teardown !== undefined || event.processGroup !== undefined) {
+        record({ session: label, event: 'transport', ...event })
+      }
       if ('exitCode' in event) exitCode = event.exitCode
       if (event.data) {
         const data = decoder.write(Buffer.from(event.data, 'base64'))
@@ -221,6 +229,10 @@ async function drive() {
       const ok = await settled(() => !transportError && predicate(), { timeoutMs: 45000, stepMs: 50 })
       await parsing
       save(`${label}-${name}.txt`, screen())
+      if (!ok) {
+        save(`${label}-${name}-processes.json`, { bridge: child.pid, processGroup, processes: groupProcesses(processGroup) })
+        record({ session: label, event: 'wait-failed', state: name, exitCode, transportError: transportError?.message })
+      }
       assert(ok, `${label}/${name}: real PTY did not reach expected state (exit=${exitCode}); see evidence`)
     }
     const type = async text => {
@@ -228,9 +240,9 @@ async function drive() {
       send(text)
       // A command and Enter are separate input events, just like normal typing.
       await wait('typed-' + actions.length, () => viewportLines(term).some(line => /⌸\s+❯/u.test(line) && line.includes(text)))
-      send('\r')
+      await enter()
     }
-    try {
+    await runAndCleanup(async () => {
       record({ session: label, argv: [state.bin, ...argv], cwd })
       await wait('startup', () => /Type to search sessions|⌸\s+❯/u.test(screen()) && exitCode === undefined)
       if (screen().includes('Type to search sessions')) {
@@ -262,14 +274,18 @@ async function drive() {
         assert(raw.lastIndexOf(`\x1b[?${mode}l`) > raw.lastIndexOf(`\x1b[?${mode}h`), `terminal mode ${mode} disabled at exit`)
       }
       record({ session: label, exitCode, terminalRestored: true })
-    } finally {
+    }, async () => {
       if (exitCode === undefined) child.stdin.write('{"stop":true}\n')
       child.stdin.end()
-      await new Promise(resolve => child.exitCode !== null ? resolve() : child.once('exit', resolve))
+      await closed
       active.delete(child)
       lines.close()
       term.dispose()
-    }
+      const stopped = await settled(() => groupProcesses(processGroup).every(p => p.status.startsWith('Z')), { timeoutMs: 45000, stepMs: 50 })
+      const processes = groupProcesses(processGroup)
+      save(`${label}-teardown.json`, { bridge: child.pid, processGroup, stopped, processes })
+      assert(stopped, `${label}: owned process group still running after bridge close`)
+    })
   }
   try {
     if (hintProject) {
@@ -538,20 +554,21 @@ async function drive() {
 function cleanup() {
   if (!existsSync(statePath)) return
   const state = readState()
-  if (state.cleaned) return
   assert(dirname(state.scratch) === '/tmp' && /^dsh-packed-[\w-]+$/.test(state.scratch.split('/').at(-1)), 'cleanup only owns its mkdtemp directory')
+  if (state.cleaned) { assert(!existsSync(state.scratch), 'cleaned scratch must remain absent'); return }
   for (const [from, to] of [['home/.dsh/sessions', 'persisted-sessions'], ['home/.dsh-tui', 'tui-state']]) {
     if (existsSync(join(state.scratch, from))) cpSync(join(state.scratch, from), join(evidence, to), { recursive: true })
   }
   rmSync(state.scratch, { recursive: true, force: true })
-  save('run.json', { ...state, cleaned: true })
+  save('cleanup.json', { scratch: state.scratch, absent: !existsSync(state.scratch), evidenceRetained: existsSync(statePath) })
   assert(existsSync(statePath) && !existsSync(state.scratch), 'proof survives scratch cleanup')
+  save('run.json', { ...state, cleaned: true })
   console.log(`cleanup: owned scratch removed; evidence retained at ${evidence}`)
 }
 
 try {
   if (command === 'roundtrip') {
-    try { launch(); doctor(); await drive() } finally { cleanup() }
+    await runAndCleanup(async () => { launch(); doctor(); await drive() }, cleanup)
     assert(existsSync(join(evidence, 'result.json')) && existsSync(join(evidence, 'fresh.ansi')), 'proof remains after teardown')
   } else if (command === 'launch') launch()
   else if (command === 'doctor') doctor()
@@ -559,7 +576,7 @@ try {
   else if (command === 'cleanup') cleanup()
   else throw new Error(`unknown command: ${command}`)
 } catch (error) {
-  save('failure.txt', error.stack)
-  console.error(error.stack)
+  save('failure.txt', failureText(error))
+  console.error(failureText(error))
   process.exitCode = 1
 }

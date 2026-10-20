@@ -26,6 +26,11 @@ assert.deepEqual(cases.map(([name, screen]) => [name,
 ]), cases.map(([name, , workspaceReady, actionReady]) => [name, workspaceReady, actionReady]))
 console.log('PASS parsed picker screens: hydration, owned workspace and acknowledged list focus precede keys')
 
+// Isolate the real prompt/PTY fixture HOME from the CI-gate shell environment.
+const driver = spawnSync(process.execPath, [new URL('./verify-packed-host-driver.mjs', import.meta.url).pathname], { encoding: 'utf8' })
+process.stdout.write(driver.stdout ?? '')
+assert.equal(driver.status, 0, driver.stderr)
+
 const ci = parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
 assert(ci.on.pull_request !== undefined || Object.hasOwn(ci.on, 'pull_request'))
 assert(ci.on.push.branches.includes('main'))

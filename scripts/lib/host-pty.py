@@ -15,6 +15,7 @@ import signal
 import struct
 import sys
 import termios
+import time
 
 
 def emit(event):
@@ -25,6 +26,7 @@ pid, master = pty.fork()
 if pid == 0:
     os.execv(sys.argv[1], sys.argv[1:])
 
+emit({'processGroup': pid})
 fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 32, 110, 0, 0))
 pending = b''
 status = None
@@ -50,6 +52,7 @@ try:
                 command = json.loads(line)
                 if 'write' in command:
                     os.write(master, command['write'].encode('utf-8'))
+                    emit({'inputWritten': command['write'], 'at': time.monotonic_ns() / 1000000})
                 if 'resize' in command:
                     cols, rows = command['resize']
                     fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
@@ -59,11 +62,15 @@ try:
         if ended:
             status = value
 finally:
+    signals = []
+    # The exec'd launcher can exit before its child finishes. Its exit is not
+    # proof that the owned PTY process group has stopped writing to HOME.
+    try:
+        os.killpg(pid, signal.SIGTERM)
+        signals.append('SIGTERM')
+    except ProcessLookupError:
+        pass
     if status is None:
-        try:
-            os.killpg(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
         # Bound teardown even if the host failed before its own exit funnel.
         for _ in range(100):
             ended, value = os.waitpid(pid, os.WNOHANG)
@@ -71,8 +78,15 @@ finally:
                 status = value
                 break
             select.select([], [], [], 0.02)
-        if status is None:
-            os.killpg(pid, signal.SIGKILL)
-            _, status = os.waitpid(pid, 0)
+    # Escalate the GROUP even if the launcher was already reaped. A stubborn
+    # descendant must not outlive the bridge and recreate removed scratch.
+    try:
+        os.killpg(pid, signal.SIGKILL)
+        signals.append('SIGKILL')
+    except ProcessLookupError:
+        pass
+    if status is None:
+        _, status = os.waitpid(pid, 0)
     os.close(master)
+    emit({'teardown': {'processGroup': pid, 'signals': signals, 'leaderReaped': status is not None}})
 emit({'exitCode': os.waitstatus_to_exitcode(status)})

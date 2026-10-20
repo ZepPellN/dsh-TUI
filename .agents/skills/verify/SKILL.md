@@ -102,6 +102,10 @@ ID. Inspect action **and** outcome, not just a final screen:
   only, restored assistant history and subsequent user input.
 - `session-id.txt`, `persisted-sessions/`, `tui-state/`: saved session and
   resume marker, copied out before scratch removal.
+- `actions.json` also records Return send/write times and owned PTY group IDs.
+  `*-teardown.json` checks no live group member remains; `cleanup.json` proves
+  path absence before marking `run.json` cleaned. Nested failures retain both
+  the original journey stack and teardown/cleanup causes.
 - `run.json` with `cleaned: true`: scratch removed while proof survives.
 
 On failure retain `failure.txt`, attempted actions, logs and screens; a failed,
