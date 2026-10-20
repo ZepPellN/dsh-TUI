@@ -305,12 +305,26 @@ configuration unchanged. An unacknowledged Codex owner fails explicitly without
 switching models. Internal network behavior of arbitrary custom adapters is
 not universally guaranteed.
 
-Only project opt-in and each session's latest cards persist: no additional raw
+The same summary may propose a Project Suggestion. Generation/opening never
+confirms it. `/hint project review` shows the current confirmed card and full
+proposed replacement; close detail, then explicitly `/hint project confirm` to
+save or `/hint project reject` to leave shared content unchanged. Empty confirmed
+state is shown honestly. Linked worktrees reload the same confirmed goal,
+constraints and decisions when reopening; Session/Turn remain session-owned.
+Intervening confirmation/control changes produce a visible conflict without a
+write. Review again, then explicitly confirm or reject; no silent rebase/merge.
+Pending suggestions are session-local memory, cleared on refresh, switching,
+disable or restart, not persisted.
+
+Only current project controls, latest confirmed Project and per-session cards persist: no additional raw
 prompt/tool-output or generation-history archive. Summaries may be sensitive
 and storage is not claimed to be encrypted. Linked Git worktrees share project
-identity; separate clones do not. This stage provides manual Session/Turn cards
-only; automatic generation, independent summary-model selection, shared Project
-cards and deletion controls remain in subsequent tickets.
+identity; separate clones do not. Project lifetime is independent of a session.
+Concurrency uses a cooperative single-host PID lock with normal admitted storage;
+it does not protect against older uncooperative writers, guarantee network-file-
+system/power-loss durability, or provide live push updates. Reopen to reload.
+Automatic generation, independent summary-model selection and deletion controls
+remain in subsequent tickets.
 
 ## Keybindings & Mouse
 
