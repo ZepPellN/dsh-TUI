@@ -183,8 +183,12 @@ function checkHint(request, destination) {
 async function probeMain({ type, wait, screen }, fixture, expected, label) {
   const marker = `VERIFY_MODEL_PROBE_${label}_${fixture.requests.length}`
   await type(marker)
-  await wait('main-selection-' + label, () => fixture.requests.some(request => JSON.stringify(request.body.messages.at(-1)).includes(marker)) && screen().includes(`MAIN_SELECTION_PROBE_OK:${marker}`))
-  const request = fixture.requests.find(request => JSON.stringify(request.body.messages.at(-1)).includes(marker))
+  // The real host may append a system update after the user message when a
+  // main-model switch forks the session. Observe the actual last user input,
+  // not the wire array tail; still require the independently rendered reply.
+  const matches = request => JSON.stringify(request.body.messages.findLast(message => message.role === 'user')).includes(marker)
+  await wait('main-selection-' + label, () => fixture.requests.some(matches) && screen().includes(`MAIN_SELECTION_PROBE_OK:${marker}`))
+  const request = fixture.requests.find(matches)
   assert.equal(request.path, expected.path)
   assert.equal(request.body.model, expected.model, 'real main request selection before/after summary')
   fixture.record({ scenario: 'real-main-selection', phase: label, providerPath: request.path, model: request.body.model, screen: screen() })
