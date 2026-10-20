@@ -287,7 +287,8 @@ Use `/hint view` or default `Alt+O` to expand/collapse, `Esc` to return without
 losing the draft. `/hint disable` cancels pending work but retains saved cards.
 Re-enabling after a disabled restart restores applicable cards without a summary call.
 
-`/hint model` shows the current Summary Model and host catalog (first12 entries).
+`/hint model` opens a select dialog with the current Summary Model and host catalog
+(first 99 entries); use arrows/Enter to choose.
 Use `/hint model provider/model` for an independent choice, or `/hint model inherit`
 for per-request inheritance. Enable first for own-storage consent. Saving requires
 destination/content disclosure again; cancelling leaves the choice unchanged.
@@ -296,6 +297,8 @@ TUI data home, surviving restart. No credentials are copied and the main session
 model never changes. Saving generates nothing and cancels old in-flight results.
 If a saved destination disappears or its configuration becomes invalid, refresh
 fails explicitly without fallback, retaining any applicable Last Valid card.
+After revoked storage grants, re-enabling discloses any different retained
+destination once it can be read; cancelling leaves generation disabled.
 
 Set `contextHintShortcut: alt+p` in the `dsh-tui` config, or set
 `DSH_TUI_HINT_SHORTCUT=alt+p`. Explicit config wins; an empty string disables

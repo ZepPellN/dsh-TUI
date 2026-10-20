@@ -5,18 +5,11 @@ export async function driveHintSelection(ui, fixture) {
   const { type, wait, screen, send } = ui
   const { record, requests, setResponse, heldHints, releaseHints, readStorage } = fixture
   await type('/hint model')
-  await wait('summary-model-catalog', () => screen().includes('Summary Model: inherit') && screen().includes('deepseek-official/deepseek-flash'))
+  await wait('summary-model-catalog', () => screen().includes('Summary Model: inherit') && screen().includes('deepseek-official/deepseek-flash') && screen().includes('hint-fixture/summary-fixture'))
   record({ scenario: 'summary-model-catalog', source: 'host registry', screen: screen() })
-  const choose = async (choice, confirm = true) => {
-    const before = countHints(requests)
-    await type(`/hint model ${choice}`)
-    await wait('summary-model-disclosure', () => screen().includes('Save Summary') && screen().includes('Model?'))
-    assert(screen().includes('12000 input characters total') && screen().includes('No tools or main-context writes.'))
-    if (choice !== 'inherit') assert(screen().includes(`Destination ${choice}.`))
-    send(confirm ? '\r' : '\x1b')
-    await wait('summary-model-choice', () => !screen().includes('Model?') && (confirm ? screen().includes('Saved Summary Model') : /⌸\s+❯/u.test(screen())))
-    assert.equal(countHints(requests), before, 'saving/cancelling never generates')
-  }
+  send('\x1b')
+  await wait('summary-model-catalog-closed', () => /⌸\s+❯/u.test(screen()))
+  const choose = (choice, options) => chooseHintSelection(ui, fixture, choice, options)
   const generate = async (main, destination) => {
     await probeMain(ui, fixture, main, 'before')
     const before = countHints(requests)
@@ -32,9 +25,9 @@ export async function driveHintSelection(ui, fixture) {
   const flash = { provider: 'deepseek-official', model: 'deepseek-flash', path: '/v1/messages' }
   const pro = { provider: 'deepseek-official', model: 'deepseek-v4-pro', path: '/v1/messages' }
   const saved = readStorage()['summary-model']
-  await choose('hint-fixture/summary-fixture', false)
+  await choose('hint-fixture/summary-fixture', { accept: false })
   assert.deepEqual(readStorage()['summary-model'], saved, 'Esc leaves preference untouched')
-  await choose('hint-fixture/summary-fixture')
+  await choose('hint-fixture/summary-fixture', { entry: 'picker' })
   assert.deepEqual(readStorage()['summary-model'], { mode: 'explicit', provider: 'hint-fixture', model: 'summary-fixture' })
   await generate(flash, explicit)
   const selected = readStorage()['summary-model']
@@ -47,7 +40,7 @@ export async function driveHintSelection(ui, fixture) {
   await type('/model deepseek-official/deepseek-v4-pro')
   await wait('main-model-pro', () => screen().includes('deepseek-v4-pro') && screen().includes('Pending update'))
   await generate(pro, explicit)
-  await choose('inherit')
+  await choose('inherit', { entry: 'picker' })
   await generate(pro, pro)
   await type('/model deepseek-official/deepseek-flash')
   await wait('main-model-flash', () => screen().includes('deepseek-flash') && screen().includes('Pending update'))
@@ -90,27 +83,84 @@ export async function driveHintSelection(ui, fixture) {
   await generate(flash, explicit)
 }
 
-export async function restoreHintSelection(ui, fixture, unavailable = false) {
+export async function chooseHintSelection({ type, wait, screen, send }, fixture, choice, { accept = true, entry = 'command' } = {}) {
+  const before = countHints(fixture.requests)
+  assert(['command', 'picker'].includes(entry))
+  if (entry === 'picker') {
+    await type('/hint model')
+    await wait('summary-picker-open', () => screen().includes('Host models (first 99)') && /❯\s+inherit/u.test(screen()))
+    const focused = () => screen().split('\n').find(line => /❯\s+(inherit|[a-z0-9.-]+\/\S+)/u.test(line))?.trim()
+    for (let step = 0; step < 100 && !focused()?.includes(`❯ ${choice}`); step++) {
+      const previous = focused()
+      fixture.record({ scenario: 'summary-picker', keys: 'Down', previous })
+      send('\x1b[B')
+      await wait('summary-picker-focus-' + step, () => focused() !== undefined && focused() !== previous)
+    }
+    assert(focused()?.includes(`❯ ${choice}`), 'ordinary picker focuses the requested host route')
+    fixture.record({ scenario: 'summary-picker', keys: 'Enter', choice, screen: screen() })
+    send('\r')
+  } else await type(`/hint model ${choice}`)
+  await wait('summary-model-disclosure', () => screen().includes('Save Summary') && screen().includes('Model?'))
+  assert(screen().includes('12000 input characters total') && screen().includes('No tools or main-context writes.'))
+  if (choice !== 'inherit') assert(screen().includes(`Destination ${choice}.`))
+  send(accept ? '\r' : '\x1b')
+  await wait('summary-model-choice', () => !screen().includes('Model?') && (accept ? screen().includes('Saved Summary Model') : /⌸\s+❯/u.test(screen())))
+  assert.equal(countHints(fixture.requests), before, 'saving/cancelling never generates')
+}
+
+export async function driveHintReconsent(ui, fixture) {
+  const { type, wait, screen, send } = ui
+  const before = countHints(fixture.requests)
+  const saved = fixture.readStorage()['summary-model']
+  await type('/hint enable')
+  await wait('reconsent-storage-disclosure', () => screen().includes('Destination deepseek-official/deepseek-flash.'))
+  send('\r')
+  await wait('reconsent-retained-destination', () => screen().includes('Destination hint-fixture/summary-fixture.') && screen().includes('Enter to select'))
+  assert.equal(countHints(fixture.requests), before, 'storage consent alone never sends to the undisclosed retained route')
+  send('\x1b')
+  await wait('reconsent-cancelled', () => /⌸\s+❯/u.test(screen()) && !screen().includes('Enter to select'))
+  await type('/hint refresh')
+  await wait('reconsent-still-disabled', () => screen().includes('/hint enable') && !screen().includes('BOUNDARY_SUMMARY_OK'))
+  assert.equal(countHints(fixture.requests), before, 'cancelling actual destination keeps generation disabled')
+  assert.deepEqual(fixture.readStorage()['summary-model'], saved)
+  await type('/hint enable')
+  await wait('reconsent-explicit-disclosure', () => screen().includes('Destination hint-fixture/summary-fixture.'))
+  send('\r')
+  await wait('reconsent-enabled', () => screen().includes('BOUNDARY_SUMMARY_OK'))
+  await probeMain(ui, fixture, { model: 'deepseek-flash', path: '/v1/messages' }, 'reconsent-before')
+  const previous = JSON.stringify(cardRecords(fixture.readStorage()))
+  await type('/hint refresh')
+  await wait('reconsent-generated', () => countHints(fixture.requests) === before + 1 && JSON.stringify(cardRecords(fixture.readStorage())) !== previous)
+  checkHint(hints(fixture.requests).at(-1), { model: 'summary-fixture', path: '/summary/v1/messages' })
+  await probeMain(ui, fixture, { model: 'deepseek-flash', path: '/v1/messages' }, 'reconsent-after')
+  fixture.record({ scenario: 'revoked-grants-retained-explicit-reconsent', screen: screen() })
+}
+
+export async function restoreHintSelection(ui, fixture, scenario = 'restored') {
+  assert(['restored', 'provider-removed', 'invalid-preference'].includes(scenario))
   const { type, wait, screen } = ui
   const before = countHints(fixture.requests)
   const cards = cardContents(fixture.readStorage())
   await wait('selection-restored-cards', () => screen().includes('BOUNDARY_SUMMARY_OK'))
   await type('/hint model')
-  await wait('selection-restored-choice', () => unavailable === 'invalid' ? screen().includes('Summary Model: invalid')
+  await wait('selection-restored-choice', () => scenario === 'invalid-preference' ? screen().includes('Summary Model: invalid')
     : screen().includes('Summary Model: explicit') && screen().includes('hint-fixture/summary-fixture'))
+  ui.send('\x1b')
+  await wait('selection-catalog-closed', () => /⌸\s+❯/u.test(screen()))
   assert.equal(countHints(fixture.requests), before, 'restart restores preference/cards without a summary call')
   await probeMain(ui, fixture, { model: 'deepseek-flash', path: '/v1/messages' }, 'restart-before')
+  const previous = JSON.stringify(cardRecords(fixture.readStorage()))
   await type('/hint refresh')
-  if (unavailable) {
+  if (scenario !== 'restored') {
     await wait('selection-unavailable', () => screen().includes('Summary destination or preference unavailable') && screen().includes('Update failed') && screen().includes('BOUNDARY_SUMMARY_OK'))
     assert.equal(countHints(fixture.requests), before, 'removed real host provider fails before HTTP with no fallback')
     assert.deepEqual(cardContents(fixture.readStorage()), cards)
   } else {
-    await wait('selection-restored-generated', () => countHints(fixture.requests) === before + 1 && screen().includes('BOUNDARY_SUMMARY_OK'))
+    await wait('selection-restored-generated', () => countHints(fixture.requests) === before + 1 && screen().includes('BOUNDARY_SUMMARY_OK') && JSON.stringify(cardRecords(fixture.readStorage())) !== previous)
     checkHint(hints(fixture.requests).at(-1), { model: 'summary-fixture', path: '/summary/v1/messages' })
   }
   await probeMain(ui, fixture, { model: 'deepseek-flash', path: '/v1/messages' }, 'restart-after')
-  fixture.record({ scenario: unavailable === 'invalid' ? 'summary-preference-invalid' : unavailable ? 'summary-provider-removed' : 'summary-restart', summaryRequests: countHints(fixture.requests), screen: screen() })
+  fixture.record({ scenario, summaryRequests: countHints(fixture.requests), screen: screen() })
 }
 
 const hints = requests => requests.filter(request => JSON.stringify(request.body.messages).includes('CONTEXT_HINT_V1'))

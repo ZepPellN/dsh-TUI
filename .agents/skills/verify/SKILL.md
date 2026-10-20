@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, manual Context Hint consent/cards/failures/shortcuts/lifecycle, and clean terminal exit with synthetic providers only.
+description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, manual Context Hint consent/cards/failures/shortcuts/lifecycle, independent Summary Model selection, and clean terminal exit with synthetic providers only.
 ---
 
 # Verify dsh-TUI

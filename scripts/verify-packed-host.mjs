@@ -15,7 +15,7 @@ import { StringDecoder } from 'node:string_decoder'
 import xterm from '@xterm/headless'
 import { settled, viewportLines, writeParsed } from './lib/term-test.mjs'
 import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-screen.mjs'
-import { driveHintSelection, restoreHintSelection } from './lib/packed-hint-selection.mjs'
+import { driveHintSelection, restoreHintSelection, chooseHintSelection, driveHintReconsent } from './lib/packed-hint-selection.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const { Terminal } = xterm
@@ -27,7 +27,9 @@ const hintUi = process.argv.includes('--hint-ui')
 const hintLifecycle = process.argv.includes('--hint-lifecycle')
 const hintFences = process.argv.includes('--hint-fences')
 const hintSelection = process.argv.includes('--hint-selection')
+const hintReconsent = process.argv.includes('--hint-reconsent')
 assert(!hintSelection || (hintJourney && hintRefresh), '--hint-selection requires --context-hint --hint-refresh')
+assert(!hintReconsent || (hintJourney && hintRefresh), '--hint-reconsent requires --context-hint --hint-refresh')
 const hintShortcut = process.argv.find(arg => arg.startsWith('--hint-shortcut='))?.slice('--hint-shortcut='.length)
 assert(hintShortcut === undefined || ['alt+p', ''].includes(hintShortcut), 'shortcut journey accepts alt+p or empty (command only)')
 const command = process.argv[2]?.startsWith('--') ? 'roundtrip' : process.argv[2] ?? 'roundtrip'
@@ -99,12 +101,13 @@ function launch() {
     // Patches replace the whole config: retain every shipped front-door value.
     writeFileSync(state.hintPatch, '- id: dsh-tui\n  config:\n    provider: deepseek-official\n    fullscreen: true\n    terminalImages: true\n    effort: max\n    sessionId: !!js process.env.DSH_TUI_RESUME_SESSION ?? undefined\n    workspace: !!js process.env.DSH_TUI_WORKSPACE_TARGET ?? undefined\n    contextHintShortcut: ' + JSON.stringify(hintShortcut) + '\n')
   }
-  if (hintSelection) {
+  if (hintSelection || hintReconsent) {
     assert(hintShortcut === undefined, 'selection journey uses its own isolated provider overlay')
     state.hintPatch = join(scratch, 'hint-selection.patch.yml')
-    // A real host adapter with a self-contained synthetic provider profile.
-    // The only replaced boundary remains external HTTP; no loader/UI stand-in.
-    writeFileSync(state.hintPatch, '- insert:\n    - id: hint-fixture-provider\n      name: "@deepseek-ai/dsh-llm-pi-ai"\n      inject: [llm]\n      disabled: !!js process.env.DSH_VERIFY_HINT_AVAILABLE === "0"\n      config:\n        providers:\n          hint-fixture:\n            api: anthropic-messages\n            apiKeyEnv: DEEPSEEK_API_KEY\n            baseURL: !!js process.env.DEEPSEEK_BASE_URL + "/summary"\n            models:\n              - id: summary-fixture\n                contextWindow: 32768\n                maxTokens: 8192\n                reasoningEfforts: false\n')
+    // One real host-owned pi-ai registration declares the run-only route;
+    // mounting the same directory plugin twice would be an authoring error,
+    // not a second provider. The only replaced boundary remains external HTTP.
+    writeFileSync(state.hintPatch, '- id: llm-pi-ai\n  config:\n    providers: !!js >-\n      process.env.DSH_VERIFY_HINT_AVAILABLE === "0"\n      ? {}\n      : {\n          "hint-fixture": {\n            api: "anthropic-messages",\n            apiKeyEnv: "DEEPSEEK_API_KEY",\n            baseURL: process.env.DEEPSEEK_BASE_URL + "/summary",\n            models: [{ id: "summary-fixture", contextWindow: 32768, maxTokens: 8192, reasoningEfforts: false }],\n          },\n        }\n')
   }
   save('run.json', state)
   console.log(`launched isolated package setup: ${scratch}`)
@@ -136,12 +139,14 @@ async function drive() {
   const releaseHints = () => { for (const release of heldHints.splice(0)) release() }
   const provider = createServer(async (req, res) => {
     try {
-      assert(['/v1/messages', ...(hintSelection ? ['/summary/v1/messages'] : [])].includes(req.url), 'only synthetic loopback Messages destinations')
+      const url = new URL(req.url, 'http://127.0.0.1')
+      assert(['/v1/messages', ...(hintSelection || hintReconsent ? ['/summary/v1/messages'] : [])].includes(url.pathname), 'only synthetic loopback Messages destinations')
+      assert(url.search === '' || (url.pathname === '/summary/v1/messages' && url.search === '?beta=true'), 'only the real Anthropic adapter beta query is allowed')
       let body = ''
       for await (const chunk of req) body += chunk
       const json = JSON.parse(body)
       assert.equal(req.headers['x-api-key'], 'dsh-verify-synthetic-not-a-real-key')
-      requests.push({ path: req.url, body: json })
+      requests.push({ path: url.pathname, url: req.url, body: json })
       save('provider-requests.json', requests)
       const last = [...json.messages].reverse().find(m => m.role === 'user')
       const text = JSON.stringify(last?.content)
@@ -328,6 +333,7 @@ async function drive() {
           assert(stored.includes('BOUNDARY_SUMMARY_OK'), 'actual latest card persisted by admitted component')
           assert(!stored.includes('VERIFY_FIRST'), 'no new raw prompt archive')
           if (hintSelection) await driveHintSelection({ type, wait, screen, send }, selectionFixture)
+          else if (hintReconsent) await chooseHintSelection({ type, wait, screen, send }, selectionFixture, 'hint-fixture/summary-fixture')
           if (hintUi) {
             hintResponse = 'hold-valid'
             await type('/hint refresh')
@@ -498,23 +504,30 @@ async function drive() {
           assert.equal(countHints(), beforeEnable + 1, 'failed refresh retains the restored Last Valid without repair')
         })
       }
-      if (hintSelection) {
+      if (hintSelection || hintReconsent) {
         const resume = readFileSync(join(state.scratch, 'home/.dsh-tui/resume.txt'), 'utf8').trim()
-        await session('selection-restored', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture))
-        // Remove only the run-owned synthetic provider from the actual next
-        // host composition. Saved explicit selection must fail, not inherit.
-        env.DSH_VERIFY_HINT_AVAILABLE = '0'
-        await session('selection-unavailable', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture, true))
-        env.DSH_VERIFY_HINT_AVAILABLE = '1'
-        const storagePath = join(state.scratch, 'home/.dsh-tui/plugin-storage/dsh-tui.context-hint.json')
-        const storage = selectionFixture.readStorage()
-        // Corrupt only this run's own route-only preference, after host exit.
-        storage['summary-model'] = { mode: 'explicit', provider: 'hint-fixture', model: 42 }
-        writeFileSync(storagePath, JSON.stringify(storage))
-        await session('selection-invalid', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture, 'invalid'))
+        const grantsPath = join(state.scratch, 'home/.dsh-tui/extension-grants.json')
+        const grants = JSON.parse(readFileSync(grantsPath, 'utf8'))
+        delete grants.grants['dsh-tui.context-hint']
+        writeFileSync(grantsPath, JSON.stringify(grants))
+        await session('selection-reconsent', ['--resume', resume], ui => driveHintReconsent(ui, selectionFixture))
+        if (hintSelection) {
+          await session('selection-restored', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture))
+          // Remove only the run-owned synthetic provider from the actual next
+          // host composition. Saved explicit selection must fail, not inherit.
+          env.DSH_VERIFY_HINT_AVAILABLE = '0'
+          await session('selection-unavailable', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture, 'provider-removed'))
+          env.DSH_VERIFY_HINT_AVAILABLE = '1'
+          const storagePath = join(state.scratch, 'home/.dsh-tui/plugin-storage/dsh-tui.context-hint.json')
+          const storage = selectionFixture.readStorage()
+          // Corrupt only this run's own route-only preference, after host exit.
+          storage['summary-model'] = { mode: 'explicit', provider: 'hint-fixture', model: 42 }
+          writeFileSync(storagePath, JSON.stringify(storage))
+          await session('selection-invalid', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture, 'invalid-preference'))
+        }
       }
       save('result.json', { passed: true, target, feature: hintSelection ? 'context-hint-selection' : hintRefresh ? 'context-hint-refresh' : 'context-hint-consent',
-        scenarios: { hintFailures, hintUi, hintLifecycle, hintFences, hintShortcut, hintSelection }, requests: requests.length, platform: process.platform })
+        scenarios: { hintFailures, hintUi, hintLifecycle, hintFences, hintShortcut, hintSelection, hintReconsent }, requests: requests.length, platform: process.platform })
       return
     }
     await session('fresh', [], async ({ type, wait, screen }) => {
