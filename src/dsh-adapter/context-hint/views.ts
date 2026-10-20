@@ -1,6 +1,6 @@
 import type { TuiSceneProps } from '../scenes.js'
 import type { TuiStatusViewProps } from '../status.js'
-import type { HintResult } from './result.js'
+import type { HintResult, ProjectCard } from './result.js'
 import type { ScrollBoxHandle } from '../../ui.js'
 import { cleanRenderText } from '../sanitize.js'
 import { parseShortcutCombo, matchShortcut } from '../shortcuts.js'
@@ -11,6 +11,8 @@ export interface HintView {
   cards?: HintResult
   failed: boolean
   model?: string
+  projectCard?: ProjectCard
+  suggestion?: { card: ProjectCard; reviewed: boolean; conflict: boolean }
 }
 
 /** Plain, bounded display data; host React/hooks only, never Markdown or ANSI. */
@@ -21,7 +23,8 @@ export function hintViews(read: () => HintView, subscribe: (listener: () => void
     const content = view.cards === undefined ? t('hint-pending')
       : t('hint-compact', { status: view.cards.session.status, next: view.cards.session.next })
     return view.enabled ? React.createElement(ui.Text, { dimColor: true, wrap: 'truncate-end' },
-      view.failed ? `${t('hint-failed')} · ${content}` : content) : null
+      (view.failed ? `${t('hint-failed')} · ${content}` : content)
+        + (view.suggestion === undefined ? '' : ` · ${t('hint-project-pending')}`)) : null
   }
   function Detail({ React, ui, close }: TuiSceneProps) {
     const view = React.useSyncExternalStore(subscribe, read)
@@ -53,6 +56,19 @@ export function hintViews(read: () => HintView, subscribe: (listener: () => void
           line(t('hint-session'), cleanRenderText(owner.session, 80)),
           view.model === undefined ? null : e(ui.Text, { key: 'summary-model' }, view.model),
           view.failed ? e(ui.Text, { color: 'warning' }, t('hint-failed')) : null,
+          e(ui.Text, { bold: true }, t('hint-project-card')),
+          ...(view.projectCard === undefined ? [e(ui.Text, { key: 'project-empty' }, t('hint-project-empty'))] : [
+            line(t('hint-project-goal'), view.projectCard.goal), line(t('hint-project-constraints'), view.projectCard.constraints),
+            line(t('hint-project-decisions'), view.projectCard.decisions),
+          ]),
+          ...(view.suggestion === undefined ? [] : [
+            e(ui.Text, { key: 'suggestion', bold: true }, t('hint-project-suggestion')),
+            line(t('hint-proposed-goal'), view.suggestion.card.goal),
+            line(t('hint-proposed-constraints'), view.suggestion.card.constraints), line(t('hint-proposed-decisions'), view.suggestion.card.decisions),
+            e(ui.Text, { key: 'review', color: view.suggestion.conflict ? 'warning' : undefined },
+              t(view.suggestion.conflict ? 'hint-project-conflict' : view.suggestion.reviewed ? 'hint-project-reviewed' : 'hint-project-review-required')),
+            e(ui.Text, { key: 'project-controls', dimColor: true }, t('hint-project-controls')),
+          ]),
           e(ui.Text, { bold: true }, t('hint-session-card')),
           ...(card === undefined ? [e(ui.Text, { key: 'pending' }, t('hint-pending'))] : [
             line(t('hint-goal'), card.session.goal), line(t('hint-status'), card.session.status),

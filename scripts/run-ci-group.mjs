@@ -603,6 +603,7 @@ const GROUPS = {
     ['verify-context-hint-input', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-input.ts']],
     ['verify-context-hint-result', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-result.ts']],
     ['verify-context-hint-project', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-project.ts']],
+    ['verify-context-hint-shared-project', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-shared-project.ts']],
     ['verify-context-hint-transport', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-transport.ts']],
     ['verify-context-hint-storage', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-storage.ts']],
 // L4 composition boundary plus report/metadata lifetime fences.
