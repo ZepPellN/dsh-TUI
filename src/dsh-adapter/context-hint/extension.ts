@@ -10,6 +10,8 @@ import { liveSessionOffset, snapshotLiveSessionEvents } from '../compat/liveSess
 import { requestHint } from './request.js'
 import { parseHintResult, type HintResult } from './result.js'
 import { hintViews, type HintView } from './views.js'
+import { confirmProject, readSharedProject, setProjectEnabled, type SharedProject } from './shared-project.js'
+import type { ProjectCard } from './result.js'
 
 export interface HintDependencies {
   owner: ChannelOwner
@@ -27,6 +29,8 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
   let project: HintProject | undefined
   let enabled = false
   let cards: HintResult | undefined
+  let projectCard: ProjectCard | undefined
+  let suggestion: { card: ProjectCard; base: SharedProject; reviewed: boolean; conflict: boolean; eventOffset: number } | undefined
   let cardOffset = 0
   let failed = false
   let request: AbortController | undefined
@@ -34,7 +38,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
   let snapshot: HintView = { enabled: false, failed: false }
   const listeners = new Set<() => void>()
   const publish = () => {
-    snapshot = { enabled, cards, failed }
+    snapshot = { enabled, cards, failed, projectCard, suggestion }
     for (const listener of listeners) listener()
   }
   const { Compact, Detail } = hintViews(() => snapshot,
@@ -43,15 +47,25 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     deps.shortcut ?? 'alt+o')
   ctx.get('tuiStatus')?.registerView({ key: 'context-hint', component: Compact, maxRows: 1 }, ctx)
   ctx.get('tuiScenes')?.register({ id: 'context-hint', title: t('hint-detail-title'), component: Detail }, ctx)
-  const toggle = AsyncLocalStorage.bind(() => {
+  const toggle = AsyncLocalStorage.bind(async () => {
     if (!enabled) { deps.notify(t('hint-help')); return }
     const scenes = ctx.get('tuiScenes')
     if (scenes === undefined) { deps.notify(t('hint-unavailable')); return }
     if (scenes.active?.id === 'context-hint') scenes.close()
-    else scenes.open('context-hint')
+    else {
+      const capture = deps.binding.capture()
+      const target = project
+      const latest = target === undefined ? undefined : await readSharedProject(storage, target)
+      if (!deps.owner.current() || !enabled || !deps.binding.isCurrent(capture) || target !== project) return
+      projectCard = latest?.card
+      publish()
+      scenes.open('context-hint')
+    }
   })
   const shortcut = deps.shortcut ?? 'alt+o'
-  if (shortcut !== '') ctx.get('tuiShortcuts')?.register(shortcut, { description: t('hint-detail-title'), handler: toggle }, ctx)
+  if (shortcut !== '') ctx.get('tuiShortcuts')?.register(shortcut, { description: t('hint-detail-title'), handler: () => {
+    void toggle().catch(() => { if (deps.owner.current()) deps.notify(t('hint-unavailable')) })
+  } }, ctx)
 
   const load = async () => {
     const ticket = ++revision
@@ -60,11 +74,9 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
     const nextProject = await resolveHintProject(cwd)
     if (!current()) return
-    const { value } = await storage.get({ key: nextProject.key })
+    const shared = await readSharedProject(storage, nextProject)
     if (!current()) return
-    const nextEnabled = value !== null && typeof value === 'object'
-      && (value as { identity?: unknown }).identity === nextProject.id
-      && (value as { enabled?: unknown }).enabled === true
+    const nextEnabled = shared.enabled
     let nextCards: HintResult | undefined
     let nextOffset = 0
     let nextFailed = false
@@ -86,6 +98,8 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     }
     if (!current()) return
     project = nextProject
+    projectCard = shared.card
+    suggestion = undefined
     enabled = nextEnabled
     cards = nextCards
     cardOffset = nextOffset
@@ -105,6 +119,8 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     project = undefined
     enabled = false
     cards = undefined
+    projectCard = undefined
+    suggestion = undefined
     failed = false
     const scenes = ctx.get('tuiScenes')
     if (scenes?.active?.id === 'context-hint') scenes.close()
@@ -122,42 +138,90 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       const target = await resolveHintProject(cwd)
       const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
       if (!current()) return
-      await withStorageWriteGuard(current, () => storage.set({ key: target.key, value: { identity: target.id, enabled: true } }))
+      await setProjectEnabled(storage, target, true, current)
       if (!current()) return
       await boundLoad()
     }),
     disable: AsyncLocalStorage.bind(async () => {
       request?.abort()
-      revision++
+      const ticket = ++revision
+      const capture = deps.binding.capture()
+      const target = project
+      const cwd = deps.cwd()
+      const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
       enabled = false
+      suggestion = undefined
       const scenes = ctx.get('tuiScenes')
       if (scenes?.active?.id === 'context-hint') scenes.close()
       publish()
-      if (project !== undefined) await storage.set({ key: project.key, value: { identity: project.id, enabled: false } })
+      if (target !== undefined) await setProjectEnabled(storage, target, false, current)
+    }),
+    projectAction: AsyncLocalStorage.bind(async (action: string) => {
+      const pending = suggestion
+      const target = project
+      if (!enabled || pending === undefined || target === undefined) { deps.notify(t('hint-project-no-suggestion')); return }
+      const capture = deps.binding.capture()
+      const cwd = deps.cwd()
+      const current = () => deps.owner.current() && enabled && suggestion === pending && project === target
+        && deps.binding.isCurrent(capture) && deps.cwd() === cwd
+        && liveSessionOffset(capture.agent.session) === pending.eventOffset
+      if (action === 'reject') {
+        suggestion = undefined
+        publish()
+        deps.notify(t('hint-project-rejected'))
+      } else if (action === 'review') {
+        const latest = await readSharedProject(storage, target)
+        if (!current()) return
+        pending.base = latest
+        pending.reviewed = true
+        pending.conflict = false
+        projectCard = latest.card
+        publish()
+        ctx.get('tuiScenes')?.open('context-hint')
+      } else if (action === 'confirm') {
+        if (!pending.reviewed || pending.conflict) { deps.notify(t('hint-project-review-required')); return }
+        const result = await confirmProject(storage, target, pending.base, pending.card, current)
+        if (!current()) return
+        projectCard = result.project.card
+        if (result.status === 'confirmed') suggestion = undefined
+        else { pending.conflict = true; pending.reviewed = false }
+        publish()
+        deps.notify(t(result.status === 'confirmed' ? 'hint-project-confirmed' : 'hint-project-conflict'))
+      } else deps.notify(t('hint-project-controls'))
     }),
     refresh: AsyncLocalStorage.bind(async () => {
       if (!enabled || project === undefined) { deps.notify(t('hint-help')); return }
       request?.abort()
+      suggestion = undefined
+      publish()
       const controller = new AbortController()
       request = controller
       const capture = deps.binding.capture()
       const session = capture.agent.session
       const eventOffset = liveSessionOffset(session)
       const identity = project.id
+      const target = project
       const cwd = deps.cwd()
       const route = deps.route()
       const current = () => deps.owner.current() && enabled && request === controller && !controller.signal.aborted
         && deps.binding.isCurrent(capture) && deps.cwd() === cwd && project?.id === identity
         && liveSessionOffset(session) === eventOffset
       try {
+        const base = await readSharedProject(storage, target)
+        if (!current() || !base.enabled) return
         const result = await requestHint(ctx, {
           ...route, events: snapshotLiveSessionEvents(session),
           signal: AbortSignal.any([controller.signal, deps.owner.signal]),
         })
         if (!current()) return
-        await withStorageWriteGuard(current, () => storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset, cards: result, ...route } }))
+        const latestCards = { session: result.session, turn: result.turn }
+        await withStorageWriteGuard(current, () => storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset, cards: latestCards, ...route } }))
         if (!current()) return
-        cards = result
+        cards = latestCards
+        projectCard = base.card
+        suggestion = result.projectSuggestion === undefined ? undefined : {
+          card: result.projectSuggestion, base, reviewed: false, conflict: false, eventOffset,
+        }
         cardOffset = eventOffset
         failed = false
         publish()
