@@ -502,6 +502,7 @@ function createChannelWithOwner(
      *  is the only ns whose section carries the TUI's user layer. */
     settingsNamespace: options.settingsNs ?? 'dsh-tui',
     get autoRecapOnOpen(): boolean {
+      if (contextHintHost?.suppressesRecap) return false
       const settings = ctx.get('settings') as
         | { describe(options?: { redactSecrets?: boolean }): readonly { ns: string; value: unknown }[] }
         | undefined
@@ -1087,6 +1088,7 @@ function createChannelWithOwner(
     contextHintHost = createContextHintHost(ctx, {
       owner, binding, cwd: () => state.cwd, route: () => ({ provider: state.provider, model: state.model }),
       subscribe: emitter.subscribe,
+      changed: emitter.emit,
       shortcut: options.contextHintShortcut,
       notify: text => notify(text, { color: 'warning', timeoutMs: 8000 }),
     })

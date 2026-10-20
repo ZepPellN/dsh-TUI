@@ -10,8 +10,9 @@ import type { TuiDialogConfirmRequest } from '../dialogs.js'
 import { logMouseDebug } from '../../utils/debug.js'
 
 export function createContextHintHost(ctx: Context, deps: HintDependencies) {
-  if (typeof ctx.plugin !== 'function' || ctx.get('tuiPluginHost') === undefined) return { run() { deps.notify(t('hint-unavailable')) } }
+  if (typeof ctx.plugin !== 'function' || ctx.get('tuiPluginHost') === undefined) return { suppressesRecap: false, run() { deps.notify(t('hint-unavailable')) } }
   const runtime = adapterRuntimeFor(ctx)
+  let restoring = hintStorageGranted(runtime)
   let extension: ReturnType<typeof applyHintExtension> | undefined
   let mounting: Promise<void> | undefined
   let consent: AbortController | undefined
@@ -71,7 +72,12 @@ export function createContextHintHost(ctx: Context, deps: HintDependencies) {
       } finally { unsubscribe(); if (consent === controller) consent = undefined }
     } else if (action === 'disable') {
       consent?.abort()
+      restoring = false
       await extension?.disable()
+      deps.changed?.()
+    } else if (action === 'pause' || action === 'resume') {
+      if (extension === undefined) { deps.notify(t('hint-help')); return }
+      await extension.setPaused(action === 'pause')
     } else if (action === 'refresh' || action === 'retry') {
       if (extension === undefined) { deps.notify(t('hint-help')); return }
       await extension.refresh()
@@ -83,6 +89,9 @@ export function createContextHintHost(ctx: Context, deps: HintDependencies) {
     }
   }
   return {
+    // Resolve opt-in before allowing the old on-open recap. Restore itself
+    // must not race a duplicate automatic call on the same session.
+    get suppressesRecap() { return extension?.suppressesRecap ?? restoring },
     // The host owns asynchronous errors as well as cancellation. Returning a
     // pending UI promise would make its settlement touch an expired UI lease
     // when /exit cancels a held summary request.

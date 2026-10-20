@@ -10,6 +10,7 @@ import { liveSessionOffset, snapshotLiveSessionEvents } from '../compat/liveSess
 import { requestHint } from './request.js'
 import { parseHintResult, type HintResult } from './result.js'
 import { hintViews, type HintView } from './views.js'
+import { createHintInteractions } from './interactions.js'
 
 export interface HintDependencies {
   owner: ChannelOwner
@@ -19,6 +20,7 @@ export interface HintDependencies {
   subscribe(listener: () => void): () => void
   shortcut?: string
   notify(text: string): void
+  changed?(): void
 }
 
 /** Admitted extension body; all effects belong to its real Cordis activation. */
@@ -26,16 +28,20 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
   const storage: TuiPluginStorage = ctx.get('tuiPluginStorage')!.open(ctx)
   let project: HintProject | undefined
   let enabled = false
+  let paused = false
+  let loading = true
+  const interactions = createHintInteractions()
   let cards: HintResult | undefined
   let cardOffset = 0
   let failed = false
   let request: AbortController | undefined
   let revision = 0
-  let snapshot: HintView = { enabled: false, failed: false }
+  let snapshot: HintView = { enabled: false, paused: false, failed: false }
   const listeners = new Set<() => void>()
   const publish = () => {
-    snapshot = { enabled, cards, failed }
+    snapshot = { enabled, paused, cards, failed }
     for (const listener of listeners) listener()
+    deps.changed?.()
   }
   const { Compact, Detail } = hintViews(() => snapshot,
     listener => { listeners.add(listener); return () => { listeners.delete(listener) } },
@@ -52,6 +58,15 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
   })
   const shortcut = deps.shortcut ?? 'alt+o'
   if (shortcut !== '') ctx.get('tuiShortcuts')?.register(shortcut, { description: t('hint-detail-title'), handler: toggle }, ctx)
+
+  // Project-control connection surface: retain fields owned by shared Project
+  // content. #6 funnels this read/check/write through its cooperative writer.
+  const updateControl = async (target: HintProject, patch: { enabled?: boolean; paused?: boolean }, current: () => boolean) => {
+    const { value } = await storage.get({ key: target.key })
+    const previous = value !== null && typeof value === 'object' && !Array.isArray(value)
+      && (value as { identity?: unknown }).identity === target.id ? value : {}
+    await withStorageWriteGuard(current, () => storage.set({ key: target.key, value: { ...previous, identity: target.id, ...patch } }))
+  }
 
   const load = async () => {
     const ticket = ++revision
@@ -87,6 +102,9 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     if (!current()) return
     project = nextProject
     enabled = nextEnabled
+    paused = nextEnabled && (value as { paused?: unknown }).paused === true
+    loading = false
+    interactions.reset(liveSessionOffset(capture.agent.session), enabled, paused)
     cards = nextCards
     cardOffset = nextOffset
     failed = nextFailed
@@ -104,6 +122,9 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     request?.abort()
     project = undefined
     enabled = false
+    paused = false
+    loading = true
+    interactions.reset(liveSessionOffset(observed.agent.session), false, false)
     cards = undefined
     failed = false
     const scenes = ctx.get('tuiScenes')
@@ -112,28 +133,51 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     void boundLoad().catch(() => { if (deps.owner.current()) deps.notify(t('hint-unavailable')) })
   }))
   deps.owner.own(() => { revision++; request?.abort(); unsubscribe(); listeners.clear() })
-  return {
+  const actions = {
+    get suppressesRecap() { return loading || enabled },
     toggle,
     load: boundLoad,
     enable: AsyncLocalStorage.bind(async () => {
+      request?.abort()
       const ticket = ++revision
       const capture = deps.binding.capture()
       const cwd = deps.cwd()
       const target = await resolveHintProject(cwd)
       const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
       if (!current()) return
-      await withStorageWriteGuard(current, () => storage.set({ key: target.key, value: { identity: target.id, enabled: true } }))
+      await updateControl(target, { enabled: true, paused: false }, current)
       if (!current()) return
       await boundLoad()
     }),
     disable: AsyncLocalStorage.bind(async () => {
       request?.abort()
-      revision++
+      const ticket = ++revision
+      const capture = deps.binding.capture()
+      const cwd = deps.cwd()
+      const target = project
       enabled = false
+      paused = false
+      loading = false
+      interactions.reset(liveSessionOffset(deps.binding.agent.session), false, false)
       const scenes = ctx.get('tuiScenes')
       if (scenes?.active?.id === 'context-hint') scenes.close()
       publish()
-      if (project !== undefined) await storage.set({ key: project.key, value: { identity: project.id, enabled: false } })
+      if (target !== undefined) await updateControl(target, { enabled: false, paused: false },
+        () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd())
+    }),
+    setPaused: AsyncLocalStorage.bind(async (next: boolean) => {
+      if (!enabled || project === undefined) { deps.notify(t('hint-help')); return }
+      const ticket = ++revision
+      const target = project
+      const capture = deps.binding.capture()
+      const cwd = deps.cwd()
+      paused = next
+      // Both controls reset observation: resume handles only future turns,
+      // never the history accumulated while paused or an already-open turn.
+      interactions.reset(liveSessionOffset(capture.agent.session), enabled, paused)
+      publish()
+      await updateControl(target, { paused: next }, () => deps.owner.current() && enabled && ticket === revision
+        && deps.binding.isCurrent(capture) && cwd === deps.cwd() && project?.id === target.id)
     }),
     refresh: AsyncLocalStorage.bind(async () => {
       if (!enabled || project === undefined) { deps.notify(t('hint-help')); return }
@@ -175,4 +219,12 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       } finally { if (request === controller) request = undefined }
     }),
   }
+  deps.owner.own(ctx.on('session/event', (session, event) => {
+    if (!deps.owner.current() || !deps.binding.isCurrent(observed) || session !== observed.agent.session) return
+    if (interactions.observe(event)) void actions.refresh()
+  }))
+  deps.owner.own(ctx.on('agent/inbox/claimed', ({ agent, message }) => {
+    if (deps.owner.current() && deps.binding.isCurrent(observed) && agent === observed.agent) interactions.claimed(message)
+  }))
+  return actions
 }

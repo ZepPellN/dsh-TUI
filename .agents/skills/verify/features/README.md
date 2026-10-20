@@ -1,6 +1,7 @@
 # dsh-TUI verification map
 
-This map covers #2's real packed-host user paths and #3's manual hints. It is
+This map covers #2's real packed-host user paths, #3's manual hints and #5's
+settled interactions. It is
 not an assertion that all TUI features or alternate entry points are covered.
 
 ## Baseline preconditions
@@ -36,3 +37,5 @@ not an assertion that all TUI features or alternate entry points are covered.
 - [Normal exit](exit.md): `/exit`, persisted marker, zero exit and terminal reset.
 - [Manual Context Hint](context-hint.md): explicit consent, bounded requests,
   Session/Turn detail, Last Valid failures, remap/command-only and late results.
+- [Settled Context Hint](context-hint-interactions.md): automatic counts,
+  tool-rich outcomes, pause/resume, background input/scroll and recap coexistence.

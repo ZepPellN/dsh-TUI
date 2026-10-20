@@ -15,6 +15,7 @@ import { StringDecoder } from 'node:string_decoder'
 import xterm from '@xterm/headless'
 import { settled, viewportLines, writeParsed } from './lib/term-test.mjs'
 import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-screen.mjs'
+import { createHintInteractionProvider, driveHintInteractions } from './lib/packed-hint-interactions.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const { Terminal } = xterm
@@ -25,6 +26,7 @@ const hintFailures = process.argv.includes('--hint-failures')
 const hintUi = process.argv.includes('--hint-ui')
 const hintLifecycle = process.argv.includes('--hint-lifecycle')
 const hintFences = process.argv.includes('--hint-fences')
+const hintAutomatic = process.argv.includes('--hint-automatic')
 const hintShortcut = process.argv.find(arg => arg.startsWith('--hint-shortcut='))?.slice('--hint-shortcut='.length)
 assert(hintShortcut === undefined || ['alt+p', ''].includes(hintShortcut), 'shortcut journey accepts alt+p or empty (command only)')
 const command = process.argv[2]?.startsWith('--') ? 'roundtrip' : process.argv[2] ?? 'roundtrip'
@@ -121,6 +123,7 @@ async function drive() {
   const state = readState()
   doctor()
   const requests = []
+  const interactionProvider = hintAutomatic ? createHintInteractionProvider() : undefined
   let hintResponse = 'valid'
   const heldHints = []
   const releaseHints = () => { for (const release of heldHints.splice(0)) release() }
@@ -133,6 +136,7 @@ async function drive() {
       assert.equal(req.headers['x-api-key'], 'dsh-verify-synthetic-not-a-real-key')
       requests.push({ path: req.url, body: json })
       save('provider-requests.json', requests)
+      if (interactionProvider?.handle(json, res)) return
       const last = [...json.messages].reverse().find(m => m.role === 'user')
       const text = JSON.stringify(last?.content)
       const primaryFirst = Array.isArray(last?.content) && last.content.some(block => block.type === 'text' && block.text.startsWith('VERIFY_FIRST:'))
@@ -254,6 +258,10 @@ async function drive() {
     }
   }
   try {
+    if (hintAutomatic) {
+      await driveHintInteractions({ session, requests, save, fixture: interactionProvider, state })
+      return
+    }
     if (hintJourney) {
       const grantsPath = join(state.scratch, 'home/.dsh-tui/extension-grants.json')
       // ConfirmPanel's title column wraps independently from its message.
@@ -264,8 +272,8 @@ async function drive() {
         await wait('hint-consent', () => consentVisible(screen()))
         assert(screen().includes('storage.local.read') && screen().includes('storage.local.write'), 'own-storage disclosure')
         assert(screen().includes('Destination deepseek-official/deepseek-flash.'), 'actual inherited destination disclosed')
-        assert(screen().includes('No tools or main-context writes.'), 'selected content is display-only and tool-less')
-        assert(screen().includes('12000 input characters total'), 'finite selected input disclosed')
+        assert(screen().replace(/\s+/g, ' ').includes('No tools or main-context writes.'), 'selected content is display-only and tool-less')
+        assert(screen().replace(/\s+/g, ' ').includes('12000 input characters total'), 'finite selected input disclosed')
         assert.equal(requests.length, 0, 'consent does not call provider')
         send('\x1b')
         await wait('hint-consent-cancelled', () => !consentVisible(screen()))
@@ -290,10 +298,14 @@ async function drive() {
           { name: 'storage.local.write', scope: 'dsh-tui.context-hint' },
         ], 'exact component and storage permissions only')
         assert.equal(requests.length, 0, 'enable alone never generates')
+        // These existing #3 journeys isolate explicit refresh from #5's
+        // automatic trigger. The automatic journey tests resume separately.
+        await type('/hint pause')
+        await wait('manual-mode-paused', () => screen().includes('Paused automatic updates'))
         if (hintRefresh) {
           await type('VERIFY_FIRST: say hello')
           await wait('main-answer', () => screen().includes('DSH_VERIFY_FIRST_OK'))
-          assert(!requests.some(request => JSON.stringify(request.body).includes('CONTEXT_HINT_V1')), 'no automatic generation in ticket 3')
+          assert(!requests.some(request => JSON.stringify(request.body).includes('CONTEXT_HINT_V1')), 'paused manual journey makes no automatic generation')
           await type('/hint refresh')
           await wait('hint-request', () => requests.some(request => JSON.stringify(request.body.messages).includes('CONTEXT_HINT_V1')))
           const calls = requests.filter(request => JSON.stringify(request.body).includes('CONTEXT_HINT_V1'))

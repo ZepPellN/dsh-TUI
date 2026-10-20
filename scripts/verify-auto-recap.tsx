@@ -14,6 +14,8 @@
  *
  * Run: node --import tsx/esm scripts/verify-auto-recap.tsx
  */
+import fakeHome from './lib/fake-home.mjs'
+import { rmSync } from 'node:fs'
 process.env.FORCE_COLOR = '3'
 process.env.DSH_TUI_THEME = 'dark'
 process.env.DSH_TUI_LANG = 'zh'
@@ -110,7 +112,7 @@ function makeChannel() {
     agentPreset: 'standard',
     goal: undefined,
     todos: [],
-    commandList: [],
+    commandList: [{ name: 'recap', description: 'Generate a recap of recent session activity' }],
     commandCompletions() { return [] },
     contextSegments: { system: 0, prompt: 0, assistant: 0, thinking: 0, tools: 0 },
     mode: { id: 'default', plan: false, sandbox: 'workspace-write', approval: 'ask' },
@@ -331,6 +333,38 @@ await new Promise(resolve => setTimeout(resolve, 250))
 check('空会话不触发总结', channel.recapCallCount === 5, String(channel.recapCallCount))
 check('空会话无回顾行', !screenHas(term, '回顾：'))
 
+// Same-session suppression must cancel an already pending automatic recap.
+let releaseRecap!: (value: { summary: string }) => void
+let pendingSignal: AbortSignal | undefined
+channel.recapRecent = (options: { signal?: AbortSignal }) => {
+  pendingSignal = options.signal
+  return new Promise(resolve => { releaseRecap = resolve })
+}
+channel.rows = [{ id: 80, kind: 'user', text: 'Synthetic recap coordination' }]
+channel.agentId = 'probe-suppression'
+channel.emit()
+check('auto recap starts before hint enable', await settled(() => pendingSignal !== undefined))
+channel.autoRecapOnOpen = false
+channel.emit()
+check('same-session hint suppression aborts pending auto recap', await settled(() => pendingSignal?.aborted === true))
+releaseRecap({ summary: 'LATE_AUTO_RECAP' })
+check('late suppressed recap cannot render', await settled(() => !screenHas(term, '回顾：')))
+
+let explicitCalls = 0
+channel.recapRecent = async () => { explicitCalls++; return { summary: 'MANUAL_HINT_RECAP' } }
+stdin.write('/recap')
+await settle(() => screenHas(term, '/recap'))
+stdin.write('\r')
+check('manual recap remains available during suppression', await settled(() => explicitCalls === 1 && screenHas(term, 'MANUAL_HINT_RECAP')))
+channel.autoRecapOnOpen = true
+channel.emit()
+check('restoring preference preserves the manual recap', await settled(() => screenHas(term, 'MANUAL_HINT_RECAP')))
+check('restoring preference does not replace manual work', explicitCalls === 1)
+channel.agentId = 'after-manual-recap'
+channel.emit()
+check('a new session retires manual recap and restores automatic behavior', await settled(() => explicitCalls === 2))
+
 await instance.unmount()
+rmSync(fakeHome, { recursive: true, force: true })
 setLang('zh')
 process.exit(failures === 0 ? 0 : 1)
