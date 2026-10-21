@@ -25,7 +25,7 @@ export interface HintDependencies {
 }
 
 /** Admitted extension body; all effects belong to its real Cordis activation. */
-export function applyHintExtension(ctx: Context, deps: HintDependencies) {
+export function applyHintExtension(ctx: Context, deps: HintDependencies, storageConsented: () => boolean) {
   const storage: TuiPluginStorage = ctx.get('tuiPluginStorage')!.open(ctx)
   const preference = hintSelectionPreference(storage)
   let selection: HintSelection | undefined = { mode: 'inherit' }
@@ -91,7 +91,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     let nextSelection: HintSelection | undefined
     try { nextSelection = await preference.read() } catch { /* Invalid preference fails closed on refresh. */ }
     if (!current()) return
-    const nextEnabled = shared.enabled
+    const nextEnabled = shared.enabled && storageConsented()
     let nextCards: HintResult | undefined
     let nextOffset = 0
     let nextCardRoute: HintRoute | undefined
@@ -165,12 +165,12 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       publish()
       deps.notify(t('hint-model-saved', { model: modelDescription() }))
     }),
-    enable: AsyncLocalStorage.bind(async () => {
+    enable: AsyncLocalStorage.bind(async (confirmedCurrent: () => boolean) => {
       const ticket = ++revision
       const capture = deps.binding.capture()
       const cwd = deps.cwd()
       const target = await resolveHintProject(cwd)
-      const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
+      const current = () => confirmedCurrent() && deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
       if (!current()) return
       await setProjectEnabled(storage, target, true, current)
       if (!current()) return
@@ -224,7 +224,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       } else deps.notify(t('hint-project-controls'))
     }),
     refresh: AsyncLocalStorage.bind(async () => {
-      if (!enabled || project === undefined) { deps.notify(t('hint-help')); return }
+      if (!enabled || !storageConsented() || project === undefined) { deps.notify(t('hint-help')); return }
       request?.abort()
       suggestion = undefined
       publish()
@@ -239,7 +239,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       const route = destination()
       const selected = selection
       const ticket = revision
-      const current = () => deps.owner.current() && enabled && request === controller && !controller.signal.aborted
+      const current = () => deps.owner.current() && enabled && storageConsented() && request === controller && !controller.signal.aborted
         && revision === ticket
         && deps.binding.isCurrent(capture) && deps.cwd() === cwd && project?.id === identity
         && liveSessionOffset(session) === eventOffset

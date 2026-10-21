@@ -27,6 +27,14 @@ fallback, repair or automatic retry. Old held results must not commit after a
 selection change. These are acceptance requirements, not a claim from this map
 alone: inspect result.json/scenarios and the executed actions.
 
+The full selection journey also makes only the run-owned plugin-storage directory
+readable-but-unwritable, accepts the first inherited disclosure without accepting
+the retained explicit destination, exits/restarts and tries refresh. It must not
+send. Repeat by interrupting the owned PTY child with SIGTERM while the actual
+destination dialog is pending, then restart and refresh without a call. Read-only
+consent may persist, but must not authorize generation or writes. Retain the
+intentional-interruption action separately from normal terminal-restored exits.
+
 Supplement: `node --import tsx/esm scripts/verify-context-hint-selection.ts` uses
 real host discovery and admitted storage. It is not a replacement for the PTY
 journey. Remote Linux/macOS execution still requires actual workflow evidence.

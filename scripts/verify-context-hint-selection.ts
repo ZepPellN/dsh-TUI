@@ -7,7 +7,7 @@ import { LlmRuntime } from '@deepseek-ai/dsh-llm'
 import { CredentialGatedAdapter, buildOAuthProfile } from '../src/dsh-adapter/oauth/index.js'
 import { parseHintSelection, hintSelectionFromCommand, resolveHintRoute, listHintModels, hintSelectionPreference } from '../src/dsh-adapter/context-hint/selection.js'
 import { mountAdmitted, mountAdmissionHost } from './lib/plugin-test-utils.js'
-import { consentHintStorage, HINT_MANIFEST } from '../src/dsh-adapter/context-hint/consent.js'
+import { consentHintStorage, hintStorageGranted, HINT_MANIFEST } from '../src/dsh-adapter/context-hint/consent.js'
 import { defaultAdapterRuntime } from '../src/adapter/kernel/runtime.js'
 
 process.env.DSH_TUI_ADAPTER_MODE = 'new'
@@ -43,6 +43,8 @@ try {
   assert.deepEqual(await resolveHintRoute(llm, explicit, main), other)
   assert.deepEqual(main, unchanged, 'explicit resolution never mutates main selection')
   assert.deepEqual(await resolveHintRoute(llm, explicit, other), other)
+  await consentHintStorage(defaultAdapterRuntime(), new AbortController().signal, 'read-only')
+  assert.equal(hintStorageGranted(defaultAdapterRuntime()), false, 'inspecting retained choice is not durable generation consent')
   await consentHintStorage(defaultAdapterRuntime(), new AbortController().signal)
   await mountAdmissionHost(ctx, 'summary selection')
   const admitted = await mountAdmitted(ctx, 'summary-selection', HINT_MANIFEST)
@@ -51,6 +53,11 @@ try {
   assert.deepEqual(await preference.read(), { mode: 'inherit' })
   await preference.save(explicit, () => true)
   assert.deepEqual(await hintSelectionPreference(storage).read(), explicit, 'a new reader restores the explicit preference')
+  await consentHintStorage(defaultAdapterRuntime(), new AbortController().signal, 'read-only')
+  assert.equal(hintStorageGranted(defaultAdapterRuntime()), false, 'read-only renewal also removes a preexisting own write grant')
+  assert.deepEqual(await preference.read(), explicit, 'the admitted read-only phase can inspect the retained choice')
+  await assert.rejects(preference.save({ mode: 'inherit' }, () => true), /denied/, 'inspection cannot write the choice')
+  await consentHintStorage(defaultAdapterRuntime(), new AbortController().signal)
   await assert.rejects(preference.save({ mode: 'inherit' }, () => false), 'invalidated selection must not commit')
   assert.deepEqual(await preference.read(), explicit)
   await preference.save({ mode: 'inherit' }, () => true)

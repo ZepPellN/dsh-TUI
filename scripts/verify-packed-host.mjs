@@ -9,13 +9,13 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import { createInterface } from 'node:readline'
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import xterm from '@xterm/headless'
 import { settled, viewportLines, writeParsed } from './lib/term-test.mjs'
 import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-screen.mjs'
-import { driveHintSelection, restoreHintSelection, chooseHintSelection, driveHintReconsent } from './lib/packed-hint-selection.mjs'
+import { driveHintSelection, restoreHintSelection, chooseHintSelection, driveHintReconsent, driveHintConsentFault, assertHintConsentIncomplete } from './lib/packed-hint-selection.mjs'
 import { driveSharedProject } from './lib/packed-host-project.mjs'
 
 const root = resolve(import.meta.dirname, '..')
@@ -29,6 +29,8 @@ const hintLifecycle = process.argv.includes('--hint-lifecycle')
 const hintFences = process.argv.includes('--hint-fences')
 const hintSelection = process.argv.includes('--hint-selection')
 const hintReconsent = process.argv.includes('--hint-reconsent')
+const hintConsentFaults = process.argv.includes('--hint-consent-faults')
+assert(!hintConsentFaults || hintReconsent || hintSelection, '--hint-consent-faults requires --hint-reconsent or --hint-selection')
 assert(!hintSelection || (hintJourney && hintRefresh), '--hint-selection requires --context-hint --hint-refresh')
 assert(!hintReconsent || (hintJourney && hintRefresh), '--hint-reconsent requires --context-hint --hint-refresh')
 const hintProject = process.argv.includes('--hint-project')
@@ -205,6 +207,7 @@ async function drive() {
   const actions = []
   const record = action => { actions.push({ at: new Date().toISOString(), ...action }); save('actions.json', actions) }
   const selectionFixture = { record, requests, setResponse: value => { hintResponse = value }, heldHints, releaseHints,
+    readGrants: () => JSON.parse(readFileSync(join(state.scratch, 'home/.dsh-tui/extension-grants.json'), 'utf8')),
     readStorage: () => JSON.parse(readFileSync(join(state.scratch, 'home/.dsh-tui/plugin-storage/dsh-tui.context-hint.json'), 'utf8')) }
   async function session(label, args, journey, options = {}) {
     const cwd = options.cwd ?? join(state.scratch, 'workspace')
@@ -270,6 +273,13 @@ async function drive() {
       }
       await wait('ready', () => /⌸\s+❯/u.test(screen()) && exitCode === undefined)
       await journey({ wait, type, screen, send })
+      if (options.interrupt) {
+        record({ session: label, action: 'SIGTERM owned child before destination consent' })
+        child.stdin.write('{"stop":true}\n')
+        await wait('interrupted', () => exitCode !== undefined)
+        record({ session: label, exitCode, intentionalInterruption: true })
+        return
+      }
       await type('/exit')
       await wait('exit', () => exitCode !== undefined)
       assert.equal(exitCode, 0, 'normal user exit must be zero')
@@ -529,9 +539,31 @@ async function drive() {
       if (hintSelection || hintReconsent) {
         const resume = readFileSync(join(state.scratch, 'home/.dsh-tui/resume.txt'), 'utf8').trim()
         const grantsPath = join(state.scratch, 'home/.dsh-tui/extension-grants.json')
-        const grants = JSON.parse(readFileSync(grantsPath, 'utf8'))
-        delete grants.grants['dsh-tui.context-hint']
-        writeFileSync(grantsPath, JSON.stringify(grants))
+        const revoke = () => {
+          const grants = selectionFixture.readGrants()
+          delete grants.grants['dsh-tui.context-hint']
+          writeFileSync(grantsPath, JSON.stringify(grants))
+        }
+        if (hintSelection || hintConsentFaults) {
+          revoke()
+          const storageDir = join(state.scratch, 'home/.dsh-tui/plugin-storage')
+          const retained = JSON.stringify(selectionFixture.readStorage())
+          chmodSync(storageDir, 0o500)
+          try {
+            await session('selection-consent-fault', ['--resume', resume], ui => driveHintConsentFault(ui, selectionFixture))
+            await session('selection-consent-fault-restart', ['--resume', resume], ui => assertHintConsentIncomplete(ui, selectionFixture))
+            assert.equal(JSON.stringify(selectionFixture.readStorage()), retained, 'readable-but-unwritable namespace is unchanged')
+          } finally { chmodSync(storageDir, 0o700) }
+          revoke()
+          await session('selection-consent-interrupted', ['--resume', resume], async ({ type, wait, screen, send }) => {
+            await type('/hint enable')
+            await wait('interrupted-inherited-disclosure', () => screen().includes('Destination deepseek-official/deepseek-flash.'))
+            send('\r')
+            await wait('interrupted-retained-disclosure', () => screen().includes('Destination hint-fixture/summary-fixture.'))
+          }, { interrupt: true })
+          await session('selection-consent-interrupted-restart', ['--resume', resume], ui => assertHintConsentIncomplete(ui, selectionFixture))
+        }
+        revoke()
         await session('selection-reconsent', ['--resume', resume], ui => driveHintReconsent(ui, selectionFixture))
         if (hintSelection) {
           await session('selection-restored', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture))
@@ -549,7 +581,7 @@ async function drive() {
         }
       }
       save('result.json', { passed: true, target, feature: hintSelection ? 'context-hint-selection' : hintRefresh ? 'context-hint-refresh' : 'context-hint-consent',
-        scenarios: { hintFailures, hintUi, hintLifecycle, hintFences, hintShortcut, hintSelection, hintReconsent: hintReconsent || hintSelection }, requests: requests.length, platform: process.platform })
+        scenarios: { hintFailures, hintUi, hintLifecycle, hintFences, hintShortcut, hintSelection, hintReconsent: hintReconsent || hintSelection, hintConsentFaults: hintConsentFaults || hintSelection }, requests: requests.length, platform: process.platform })
       return
     }
     await session('fresh', [], async ({ type, wait, screen }) => {

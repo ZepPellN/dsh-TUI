@@ -297,8 +297,11 @@ TUI data home, surviving restart. No credentials are copied and the main session
 model never changes. Saving generates nothing and cancels old in-flight results.
 If a saved destination disappears or its configuration becomes invalid, refresh
 fails explicitly without fallback, retaining any applicable Last Valid card.
-After revoked storage grants, re-enabling discloses any different retained
-destination once it can be read; cancelling leaves generation disabled.
+After revoked storage grants, re-enabling first grants only own-storage read
+access to inspect the retained choice. A different actual destination must be
+accepted before write access and generation are enabled. Cancellation, failed
+writes or interruption before that consent cannot restore an unaccepted route
+on restart; read-only access may remain, without changing the old cards.
 
 Set `contextHintShortcut: alt+p` in the `dsh-tui` config, or set
 `DSH_TUI_HINT_SHORTCUT=alt+p`. Explicit config wins; an empty string disables

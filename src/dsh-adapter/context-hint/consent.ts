@@ -11,7 +11,7 @@ export const HINT_COMPONENT_ID = 'dsh-tui.context-hint'
 const permissions = ['storage.local.read', 'storage.local.write'] as const
 
 // This selection belongs to the trusted packaged host, never to plugin input.
-export const HINT_MANIFEST = JSON.stringify({
+const manifest = (requested: readonly (typeof permissions)[number][]) => JSON.stringify({
   $schema: 'urn:dsh-std:community-draft:dsh-plugin:0.15',
   manifestVersion: '0.15',
   id: HINT_COMPONENT_ID,
@@ -19,19 +19,23 @@ export const HINT_MANIFEST = JSON.stringify({
   version: '0.12.0',
   facets: { host: { entry: 'lib/types/dsh-adapter/context-hint/extension.js', apiVersion: 'v1alpha1' } },
   requires: { contracts: [{ apiVersion: 'storage.dsh/v1alpha1', kind: 'LocalStorage' }] },
-  permissions: permissions.map(name => ({ name, scope: HINT_COMPONENT_ID, reason: 'Persist project opt-in, Summary Model choice and latest Session/Turn cards' })),
+  permissions: requested.map(name => ({ name, scope: HINT_COMPONENT_ID, reason: 'Persist project opt-in, Summary Model choice and latest Session/Turn cards' })),
   contributes: { commands: [] },
   subscriptions: [],
   license: 'MIT',
 })
+export const HINT_MANIFEST = manifest(permissions)
+/** Inspection-only activation: the same fixed component/namespace reaches the
+ * retained choice with `storage.local.read` but cannot generate or write. */
+export const HINT_READ_MANIFEST = manifest(['storage.local.read'])
 
 export function hintStorageGranted(runtime: AdapterRuntimeOptions): boolean {
   const store = readGrantStore(undefined, undefined, runtime)
   return permissions.every(permission => store.allows(HINT_COMPONENT_ID, permission, HINT_COMPONENT_ID))
 }
 
-/** Called only after explicit UI consent. No caller-selected principal or scope. */
-export async function consentHintStorage(runtime: AdapterRuntimeOptions, signal: AbortSignal): Promise<void> {
+/** Fixed-component consent: read-only inspection cannot restore generation on restart. */
+export async function consentHintStorage(runtime: AdapterRuntimeOptions, signal: AbortSignal, phase: 'read-only' | 'complete' = 'complete'): Promise<void> {
   assertCapabilityShadowPolicy('host.admission', runtime.mode, runtime.slices)
   const file = join(DATA_DIR, EXTENSION_GRANTS_FILE)
   mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 })
@@ -49,9 +53,11 @@ export async function consentHintStorage(runtime: AdapterRuntimeOptions, signal:
       throw new Error('Context Hint storage explicitly denied')
     }
     const grants = { ...table.grants }
-    const existing = grants[HINT_COMPONENT_ID] ?? []
+    const existing = (grants[HINT_COMPONENT_ID] ?? []).filter(rule => phase !== 'read-only'
+      || (typeof rule === 'string' ? rule !== 'storage.local.write'
+        : rule === null || typeof rule !== 'object' || (rule as { name?: unknown }).name !== 'storage.local.write'))
     grants[HINT_COMPONENT_ID] = [...existing]
-    for (const name of permissions) {
+    for (const name of phase === 'read-only' ? ['storage.local.read'] as const : permissions) {
       if (!existing.some(rule => rule !== null && typeof rule === 'object'
         && (rule as { name?: unknown }).name === name && (rule as { scope?: unknown }).scope === HINT_COMPONENT_ID
         && (rule as { activationId?: unknown }).activationId === undefined)) {

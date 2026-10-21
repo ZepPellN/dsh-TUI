@@ -3,12 +3,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import { adapterRuntimeFor } from '../../adapter/kernel/runtime-context.js'
 import { getHostAdmission } from '../plugin-host.js'
 import { t } from '../../i18n.js'
-import { consentHintStorage, HINT_MANIFEST, hintStorageGranted } from './consent.js'
+import { consentHintStorage, HINT_MANIFEST, HINT_READ_MANIFEST, hintStorageGranted } from './consent.js'
 import { applyHintExtension, type HintDependencies } from './extension.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { TuiDialogConfirmRequest, TuiDialogSelectRequest } from '../dialogs.js'
 import { logMouseDebug } from '../../utils/debug.js'
-import { hintSelectionFromCommand, listHintModels, resolveHintRoute, HintSelectionError } from './selection.js'
+import { hintSelectionFromCommand, hintSelectionPreference, listHintModels, resolveHintRoute, HintSelectionError, type HintSelection } from './selection.js'
 
 export function createContextHintHost(ctx: Context, deps: HintDependencies) {
   if (typeof ctx.plugin !== 'function' || ctx.get('tuiPluginHost') === undefined) return { run() { deps.notify(t('hint-unavailable')) } }
@@ -44,7 +44,7 @@ export function createContextHintHost(ctx: Context, deps: HintDependencies) {
       const admission = getHostAdmission(candidate.get('tuiPluginHost'))
       if (admission === undefined) throw new Error('Context Hint admission unavailable')
       admission.admit(candidate, HINT_MANIFEST, { source: 'packaged:context-hint' })
-      extension = applyHintExtension(candidate, deps)
+      extension = applyHintExtension(candidate, deps, () => hintStorageGranted(runtime))
     } })
     deps.owner.own(() => { extension = undefined; void fiber.dispose() })
     mounting = fiber.await().then(async () => { await extension!.load() }).finally(() => { mounting = undefined })
@@ -88,42 +88,58 @@ export function createContextHintHost(ctx: Context, deps: HintDependencies) {
     } else if (action === 'enable') {
       if (consent !== undefined) return
       const restoringConsent = !hintStorageGranted(runtime)
-      if (!restoringConsent) await mount()
       const captureCwd = deps.cwd()
       const capture = deps.binding.capture()
-      const route = extension === undefined ? deps.route() : extension.destination()
-      if (route === undefined) throw new HintSelectionError('Invalid Summary Model preference')
       const controller = new AbortController()
       consent = controller
       const signal = AbortSignal.any([controller.signal, deps.owner.signal])
+      const current = () => !signal.aborted && deps.owner.current() && deps.binding.isCurrent(capture) && captureCwd === deps.cwd()
       const unsubscribe = deps.subscribe(() => { if (!deps.binding.isCurrent(capture) || captureCwd !== deps.cwd()) controller.abort() })
       try {
+        if (!restoringConsent) await mount()
+        if (!current()) return
+        const route = extension === undefined ? deps.route() : extension.destination()
+        if (route === undefined) throw new HintSelectionError('Invalid Summary Model preference')
         await control.await()
         logMouseDebug('context-hint consent activation', { ready: confirm !== undefined })
         const accepted = await confirm?.({
           title: t('hint-consent-title'), message: t('hint-consent', { route: `${route.provider}/${route.model}` }), signal,
         })
         logMouseDebug('context-hint consent answer', { accepted: accepted === true })
-        if (!accepted || signal.aborted || !deps.binding.isCurrent(capture) || captureCwd !== deps.cwd()) return
-        await consentHintStorage(runtime, signal)
-        await mount()
-        // Restored storage may also contain enabled:true. A renewed grant is
-        // not consent to that saved destination; cancellation must leave the
-        // feature disabled, including after restart.
-        if (restoringConsent) await extension!.disable()
-        // Storage consent preceded admission, so the first dialog may have
-        // inherited the main route while storage already held an explicit
-        // Summary Model. Enabling still requires disclosure of that actual
-        // destination; cancelling it keeps the grant but not generation.
-        const actual = extension!.destination()
-        if (actual === undefined) throw new HintSelectionError('Invalid Summary Model preference')
-        if (actual.provider !== route.provider || actual.model !== route.model) {
-          const actualAccepted = await confirm?.({
-            title: t('hint-consent-title'), message: t('hint-consent', { route: `${actual.provider}/${actual.model}` }), signal,
-          })
-          if (!actualAccepted) return
+        if (!accepted || !current()) return
+        if (restoringConsent) {
+          // Persist only read access until the actual saved destination is
+          // accepted. Old enabled:true can never auto-mount with this grant,
+          // even if storage is unwritable or this process is interrupted.
+          await consentHintStorage(runtime, signal, 'read-only')
+          if (!current()) return
+          await extension?.load()
+          if (!current()) return
+          let read: (() => Promise<HintSelection>) | undefined
+          const reader = ctx.plugin({ name: 'dsh-tui-context-hint-consent-reader', apply(candidate: Context) {
+            deps.owner.assertActive()
+            const admission = getHostAdmission(candidate.get('tuiPluginHost'))
+            if (admission === undefined) throw new Error('Context Hint admission unavailable')
+            admission.admit(candidate, HINT_READ_MANIFEST, { source: 'packaged:context-hint' })
+            const preference = hintSelectionPreference(candidate.get('tuiPluginStorage')!.open(candidate))
+            read = AsyncLocalStorage.bind(() => preference.read())
+          } })
+          let saved: HintSelection
+          try { await reader.await(); saved = await read!() } finally { await reader.dispose() }
+          if (!current()) return
+          const actual = await resolveHintRoute(ctx.get('llm'), saved, deps.route())
+          if (!current()) return
+          if (actual.provider !== route.provider || actual.model !== route.model) {
+            const actualAccepted = await confirm?.({
+              title: t('hint-consent-title'), message: t('hint-consent', { route: `${actual.provider}/${actual.model}` }), signal,
+            })
+            if (!actualAccepted || !current()) return
+          }
+          await consentHintStorage(runtime, signal)
         }
-        if (!signal.aborted && deps.binding.isCurrent(capture) && captureCwd === deps.cwd()) await extension!.enable()
+        if (!current()) return
+        await mount()
+        if (current()) await extension!.enable(current)
       } finally { unsubscribe(); if (consent === controller) consent = undefined }
     } else if (action === 'disable') {
       consent?.abort()

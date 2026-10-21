@@ -83,6 +83,7 @@ export async function driveHintSelection(ui, fixture) {
   await generate(flash, explicit)
 }
 
+/** Drive the ordinary picker/command and consent; saving never generates. */
 export async function chooseHintSelection({ type, wait, screen, send }, fixture, choice, { accept = true, entry = 'command' } = {}) {
   const before = countHints(fixture.requests)
   assert(['command', 'picker'].includes(entry))
@@ -108,6 +109,7 @@ export async function chooseHintSelection({ type, wait, screen, send }, fixture,
   assert.equal(countHints(fixture.requests), before, 'saving/cancelling never generates')
 }
 
+/** Requires retained explicit choice/cards and revoked own storage grants. */
 export async function driveHintReconsent(ui, fixture) {
   const { type, wait, screen, send } = ui
   const before = countHints(fixture.requests)
@@ -123,9 +125,13 @@ export async function driveHintReconsent(ui, fixture) {
   await wait('reconsent-still-disabled', () => screen().includes('/hint enable') && !screen().includes('BOUNDARY_SUMMARY_OK'))
   assert.equal(countHints(fixture.requests), before, 'cancelling actual destination keeps generation disabled')
   assert.deepEqual(fixture.readStorage()['summary-model'], saved)
-  const projects = Object.values(fixture.readStorage()).filter(value => typeof value?.enabled === 'boolean')
-  assert(projects.length > 0 && projects.every(value => value.enabled === false), 'cancelled renewed consent stays disabled on disk')
+  assert(!fixture.readGrants().grants['dsh-tui.context-hint'].some(rule => rule.name === 'storage.local.write'), 'incomplete consent cannot durably grant generation/write access')
+  // Cancellation left only read access, so this enable again discloses the
+  // inherited route before it can inspect and name the retained destination.
   await type('/hint enable')
+  await wait('reconsent-second-disclosure', () => screen().includes('Destination deepseek-official/deepseek-flash.')
+    || screen().includes('Destination hint-fixture/summary-fixture.'))
+  if (screen().includes('Destination deepseek-official/deepseek-flash.')) send('\r')
   await wait('reconsent-explicit-disclosure', () => screen().includes('Destination hint-fixture/summary-fixture.'))
   send('\r')
   await wait('reconsent-enabled', () => screen().includes('BOUNDARY_SUMMARY_OK'))
@@ -138,6 +144,29 @@ export async function driveHintReconsent(ui, fixture) {
   checkHint(hints(fixture.requests).at(-1), { model: 'summary-fixture', path: '/summary/v1/messages' })
   await probeMain(ui, fixture, { model: 'deepseek-flash', path: '/v1/messages' }, 'reconsent-after')
   fixture.record({ scenario: 'revoked-grants-retained-explicit-reconsent', screen: screen() })
+}
+
+/** Revoke only run-owned grants; prove failed writes and pending-consent exit cannot restore enabled B. */
+export async function driveHintConsentFault({ type, wait, screen, send }, fixture) {
+  await type('/hint enable')
+  await wait('fault-inherited-disclosure', () => screen().includes('Destination deepseek-official/deepseek-flash.'))
+  send('\r')
+  await wait('fault-first-answer', () => screen().includes('Destination hint-fixture/summary-fixture.') || screen().includes('Context Hint unavailable'))
+  fixture.record({ scenario: 'unwritable-storage-unaccepted-destination', grants: fixture.readGrants(), storage: fixture.readStorage(), screen: screen() })
+  if (screen().includes('Destination hint-fixture/summary-fixture.')) {
+    send('\x1b')
+    await wait('fault-consent-cancelled', () => /⌸\s+❯/u.test(screen()))
+  }
+}
+
+/** Restart must not dispatch while actual-destination consent was never accepted. */
+export async function assertHintConsentIncomplete({ type, wait, screen }, fixture) {
+  const before = countHints(fixture.requests)
+  await type('/hint refresh')
+  await wait('incomplete-consent-refresh', () => screen().includes('/hint enable') || screen().includes('Update failed'))
+  assert.equal(countHints(fixture.requests), before, 'restart cannot send to B after incomplete consent or a failed storage write')
+  assert(!screen().includes('BOUNDARY_SUMMARY_OK'), 'retained enabled flag is not usable consent')
+  fixture.record({ scenario: 'incomplete-consent-restart-disabled', screen: screen() })
 }
 
 export async function restoreHintSelection(ui, fixture, scenario = 'restored') {
