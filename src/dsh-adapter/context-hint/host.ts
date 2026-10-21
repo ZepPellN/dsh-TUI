@@ -78,12 +78,15 @@ export function createContextHintHost(ctx: Context, deps: HintDependencies) {
     } else if (action === 'pause' || action === 'resume') {
       if (extension === undefined) { deps.notify(t('hint-help')); return }
       await extension.setPaused(action === 'pause')
+    } else if (action.startsWith('project ')) {
+      if (extension === undefined) { deps.notify(t('hint-help')); return }
+      await extension.projectAction(action.slice('project '.length))
     } else if (action === 'refresh' || action === 'retry') {
       if (extension === undefined) { deps.notify(t('hint-help')); return }
       await extension.refresh()
     } else if (action === '' || action === 'view' || action === 'toggle') {
       if (extension === undefined) deps.notify(t('hint-help'))
-      else extension.toggle()
+      else await extension.toggle()
     } else {
       deps.notify(t('hint-help'))
     }

@@ -5,6 +5,11 @@ description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host
 
 # Verify dsh-TUI
 
+For ticket #6, use [Shared Project Card](features/context-hint-project.md):
+`node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-project --evidence /absolute/run-owned/evidence`.
+It reuses Launch/Doctor/Cleanup below with two real processes sharing one isolated
+data HOME and linked Git worktrees; a separate clone remains isolated.
+
 This is the Codex project driver. Read [features/README.md](features/README.md)
 and the matching journey first. The primary surface is the terminal, not a web
 page. The host, loader, provider adapter, session lifecycle and persistence are
@@ -150,8 +155,9 @@ macOS remote workflow execution is only proven by actual CI runs, not YAML.
 Use `/maintain-verification-skill` when application paths change.
 
 For manual Context Hint, follow [the feature journey](features/context-hint.md).
-Every flag must accompany `--context-hint`; generation cases also require
-`--hint-refresh`. Use a new evidence directory per `roundtrip`:
+The #3/#6 manual flags must accompany `--context-hint`; the #3 generation variants below
+also require `--hint-refresh`. The standalone #6 `--hint-project` journey above
+drives its own refreshes. Use a new evidence directory per `roundtrip`:
 
 ```sh
 node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-lifecycle --hint-fences --evidence "$DSH_VERIFY_EVIDENCE"

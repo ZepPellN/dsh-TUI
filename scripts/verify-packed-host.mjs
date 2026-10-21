@@ -16,6 +16,7 @@ import xterm from '@xterm/headless'
 import { settled, viewportLines, writeParsed } from './lib/term-test.mjs'
 import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-screen.mjs'
 import { createHintInteractionProvider, driveHintInteractions } from './lib/packed-hint-interactions.mjs'
+import { driveSharedProject } from './lib/packed-host-project.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const { Terminal } = xterm
@@ -27,6 +28,8 @@ const hintUi = process.argv.includes('--hint-ui')
 const hintLifecycle = process.argv.includes('--hint-lifecycle')
 const hintFences = process.argv.includes('--hint-fences')
 const hintAutomatic = process.argv.includes('--hint-automatic')
+const hintProject = process.argv.includes('--hint-project')
+assert(!hintProject || hintJourney, '--hint-project requires --context-hint')
 const hintShortcut = process.argv.find(arg => arg.startsWith('--hint-shortcut='))?.slice('--hint-shortcut='.length)
 assert(hintShortcut === undefined || ['alt+p', ''].includes(hintShortcut), 'shortcut journey accepts alt+p or empty (command only)')
 const command = process.argv[2]?.startsWith('--') ? 'roundtrip' : process.argv[2] ?? 'roundtrip'
@@ -148,7 +151,14 @@ async function drive() {
         return
       }
       if (hint && hintResponse === 'timeout') { res.writeHead(200, { 'content-type': 'text/event-stream' }); res.flushHeaders(); return }
-      const answer = hint && hintResponse === 'malformed' ? '{"session":{}}'
+      const projectOwner = text.includes('PROJECT_A:') ? 'A' : 'B'
+      const answer = hint && hintResponse.startsWith('project') ? JSON.stringify({
+        session: { goal: `Task ${projectOwner} only`, status: `PROJECT_SESSION_${projectOwner}`, blockers: [], next: 'Review stable context' },
+        turn: { completed: [`Task ${projectOwner} observed`], findings: [], verification: ['Synthetic fixture only'], failures: [], outcome: 'completed' },
+        projectSuggestion: { goal: 'PROJECT_GOAL', constraints: ['Synthetic only'], decisions: hintResponse === 'project-merged' ? ['ACCEPT_A', 'ACCEPT_B'] : [`ACCEPT_${projectOwner}`] },
+      }) : !hint && text.includes('PROJECT_A:') ? 'PROJECT_MAIN_A_OK'
+        : !hint && text.includes('PROJECT_B:') ? 'PROJECT_MAIN_B_OK'
+        : hint && hintResponse === 'malformed' ? '{"session":{}}'
         : hint && hintResponse === 'overflow' ? 'x'.repeat(16001) : hint ? JSON.stringify({
         session: { goal: 'Summarize this interaction', status: hintResponse === 'hold' ? 'LATE_WRONG_HINT' : 'BOUNDARY_SUMMARY_OK', blockers: [], next: hintResponse === 'hold-valid' ? 'BACKGROUND_NEXT_CHECK' : 'NEXT_CHECK' },
         turn: { completed: ['Reply acknowledged'], findings: [], verification: ['Synthetic provider fixture only'], failures: [], outcome: 'completed' },
@@ -182,11 +192,12 @@ async function drive() {
   const active = new Set()
   const actions = []
   const record = action => { actions.push({ at: new Date().toISOString(), ...action }); save('actions.json', actions) }
-  async function session(label, args, journey) {
+  async function session(label, args, journey, options = {}) {
+    const cwd = options.cwd ?? join(state.scratch, 'workspace')
     const term = new Terminal({ cols: 110, rows: 32, scrollback: 2000, allowProposedApi: true })
     const argv = [...(state.hintPatch === undefined ? [] : ['--patch', state.hintPatch]), ...args]
     const child = spawn('python3', [join(root, 'scripts/lib/host-pty.py'), process.execPath, state.bin, ...argv], {
-      cwd: join(state.scratch, 'workspace'), env, stdio: ['pipe', 'pipe', 'pipe'],
+      cwd, env, stdio: ['pipe', 'pipe', 'pipe'],
     })
     active.add(child)
     let exitCode
@@ -224,9 +235,15 @@ async function drive() {
       send('\r')
     }
     try {
-      record({ session: label, argv: [state.bin, ...argv], cwd: join(state.scratch, 'workspace') })
+      record({ session: label, argv: [state.bin, ...argv], cwd })
       await wait('startup', () => /Type to search sessions|⌸\s+❯/u.test(screen()) && exitCode === undefined)
       if (screen().includes('Type to search sessions')) {
+        if (hintProject) {
+          await wait('project-workspace-ready', () => screen().includes('No sessions in this workspace yet') && !screen().includes('Loading sessions'))
+          send('\x1b[C')
+          await wait('project-new-session-ready', () => screen().split('\n').some(line => /❯\s+\+ New session\s*$/u.test(line)))
+          send('\x0e')
+        } else {
         await wait('workspace-ready', () => workspacePickerReady(screen(), 'workspace') && exitCode === undefined)
         record({ session: label, state: 'workspace-ready', screen: `${label}-workspace-ready.txt` })
         record({ session: label, keys: 'Right', action: 'Focus sessions pane' })
@@ -235,6 +252,7 @@ async function drive() {
         record({ session: label, state: 'new-session-action-ready', screen: `${label}-sessions-pane.txt` })
         record({ session: label, keys: 'Ctrl+N', action: 'New session from workspace picker' })
         send('\x0e')
+        }
       }
       await wait('ready', () => /⌸\s+❯/u.test(screen()) && exitCode === undefined)
       await journey({ wait, type, screen, send })
@@ -260,6 +278,10 @@ async function drive() {
   try {
     if (hintAutomatic) {
       await driveHintInteractions({ session, requests, save, fixture: interactionProvider, state })
+      return
+    }
+    if (hintProject) {
+      await driveSharedProject({ state, run, session, save, requests, setResponse: value => { hintResponse = value } })
       return
     }
     if (hintJourney) {

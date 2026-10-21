@@ -1,7 +1,7 @@
 # dsh-TUI verification map
 
-This map covers #2's real packed-host user paths, #3's manual hints and #5's
-settled interactions. It is
+This map covers #2's real packed-host user paths, #3's manual hints, #5's
+settled interactions and #6's shared Project. It is
 not an assertion that all TUI features or alternate entry points are covered.
 
 ## Baseline preconditions
@@ -31,6 +31,9 @@ not an assertion that all TUI features or alternate entry points are covered.
   different route as verified. Cleanup must leave the proof intact.
 
 ## Features
+
+- [Shared Project Card](context-hint-project.md): two packed processes, linked
+  worktrees, independent clone, explicit review/confirm/reject and visible conflict.
 
 - [New chat](new-chat.md): first-run Sessions picker, usable composer and reply.
 - [Resume by ID](resume.md): saved session in a new process, history and continue.

@@ -1,4 +1,6 @@
-/** Settled-interaction public seam supplement; final acceptance uses the packed host. */
+/** Settled-interaction public seam supplement; final acceptance uses the packed host.
+ * Run: node --import tsx/esm scripts/verify-context-hint-interactions.ts
+ */
 import assert from 'node:assert/strict'
 import { createHintInteractions } from '../src/dsh-adapter/context-hint/interactions.js'
 

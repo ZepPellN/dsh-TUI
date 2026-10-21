@@ -1,8 +1,9 @@
 /** #5: only provider bytes are synthetic; session(), commands and PTY are the shared real host driver. */
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+/** Synthetic HTTP boundary; owns held responses until explicit release or server teardown. */
 export function createHintInteractionProvider() {
   let hintNumber = 0
   const heldHints = []
@@ -96,6 +97,7 @@ export function createHintInteractionProvider() {
   }
 }
 
+/** Drives the real host and retains evidence; borrows the caller's session/server teardown. */
 export async function driveHintInteractions({ session, requests, save, fixture, state }) {
   const count = () => requests.filter(request => JSON.stringify(request.body.messages).includes('CONTEXT_HINT_V1')).length
   const recaps = () => requests.filter(request => JSON.stringify(request.body.messages).includes('Create a compact session recap')).length
@@ -248,6 +250,31 @@ export async function driveHintInteractions({ session, requests, save, fixture, 
     await wait('new-session-no-generation', () => screen().includes('Pending update') && !screen().includes('BOUNDARY_SUMMARY_OK'))
     assert.equal(count(), beforeRestore + 1, 'navigation never triggers summary generation')
     assert.equal(recaps(), recapsBeforeRestore, 'navigation with enabled hint never starts old recap')
+    await type('/hint disable')
+    await wait('disabled-before-corrupt-restore', () => !screen().includes('Pending update'))
   })
+  // Fault only this run's optional storage boundary, never profiles, grants or preferences.
+  const corruptStorage = '{synthetic unreadable optional namespace'
+  const settingsPath = join(state.profile, 'cordis.yml')
+  const settingsBeforeFailure = readFileSync(settingsPath, 'utf8')
+  save('before-corrupt-restore.json', stored())
+  writeFileSync(storagePath, corruptStorage)
+  const beforeFailedRestore = count()
+  for (const attempt of [1, 2]) {
+    const beforeRecap = recaps()
+    await session('failed-restore-' + attempt, ['--resume', resume], async ({ type, wait, screen }) => {
+      await wait('failed-restore-recap', () => screen().includes('DSH_VERIFY_RECAP_OK') && recaps() === beforeRecap + 1)
+      assert.equal(count(), beforeFailedRestore, 'failed optional restoration never opts in or generates hints')
+      assert.equal(readFileSync(storagePath, 'utf8'), corruptStorage, 'failed restoration never repairs or overwrites optional storage')
+      await type('/new')
+      await wait('failed-restore-new-session', () => screen().includes('Explore the uncharted!')
+        && screen().split('\n').some(line => /⌸\s+❯/u.test(line) && !line.includes('/new')))
+      await type('VERIFY_SIMPLE_RESTORE_FAILURE_' + attempt)
+      await wait('failed-restore-fresh-work', () => screen().includes('SIMPLE_REPLY_RESTORE_FAILURE_' + attempt))
+      assert.equal(count(), beforeFailedRestore, 'subsequent failed binding loads also remain disabled')
+      assert.equal(recaps(), beforeRecap + 1, 'new empty session does not request a recap')
+    })
+    assert.equal(readFileSync(settingsPath, 'utf8'), settingsBeforeFailure, 'optional restore failure leaves stored recap settings unchanged')
+  }
   save('result.json', { passed: true, feature: 'context-hint-interactions', hints: count(), recaps: recaps(), requests: requests.length })
 }

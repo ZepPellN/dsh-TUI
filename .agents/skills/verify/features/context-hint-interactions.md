@@ -36,6 +36,9 @@ Read-only `glob` calls run through the real host in its owned empty workspace.
   same session suppresses/cancels it. Manual recap remains available.
 - Restart/restore applicable cards and paused state without new hint/recap
   work, then resume and complete fresh work. Navigation is never a trigger.
+- With hints disabled and grants retained, corrupt only the run-owned optional
+  storage namespace. Repeated real restarts must still show automatic recap,
+  without hint generation, storage repair or recap-preference changes.
 
 ## Evidence / Cleanup
 
@@ -50,3 +53,8 @@ The public observation supplement is
 `verify-auto-recap.tsx` supplements same-session cancellation/manual behavior
 through real Chat/xterm, not as a substitute for the packed provider counts.
 Remote Linux/macOS runs are proven only by actual CI results.
+
+After integrating #6, also run its [Shared Project journey](context-hint-project.md).
+Its connection checks use pause/resume/disable/enable from two real processes:
+each control change advances the current revision, preserves confirmed content,
+and makes no hint request. Core shared coordination remains owned by #6.
