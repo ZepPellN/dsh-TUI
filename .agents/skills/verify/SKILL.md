@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, manual Context Hint consent/cards/failures/shortcuts/lifecycle, and clean terminal exit with synthetic providers only.
+description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, Context Hint manual and settled updates, pause/recap coexistence, shortcuts/lifecycle, and clean terminal exit with synthetic providers only.
 ---
 
 # Verify dsh-TUI
@@ -113,7 +113,7 @@ skipped or timed-out entry is not a pass. Never substitute a source-loader
 smoke, fake channel or setter for this journey. No publishing, tags, production
 profile updates, branch rules or external GitHub writes are part of the driver.
 
-The mapped journeys cover #2 and manual #3, not the whole application. Report which entry
+The mapped journeys cover #2, manual #3 and settled #5, not the whole application. Report which entry
 point actually ran. Other resume aliases/pickers and unrelated features need
 their own journeys; a CLI-ID resume does not prove them.
 
@@ -159,7 +159,7 @@ macOS remote workflow execution is only proven by actual CI runs, not YAML.
 Use `/maintain-verification-skill` when application paths change.
 
 For manual Context Hint, follow [the feature journey](features/context-hint.md).
-Every hint flag must accompany `--context-hint`; the #3 generation variants below
+The #3/#6 manual flags must accompany `--context-hint`; the #3 generation variants below
 also require `--hint-refresh`. The standalone #6 `--hint-project` journey above
 drives its own refreshes. Use a new evidence directory per `roundtrip`:
 
@@ -186,3 +186,10 @@ The storage supplement uses the real admitted storage runtime and a real
 contended file lock; invalidation rejects the commit without replacing Last
 Valid. The command-only packed journey also disables, restarts, re-enables
 without a hint call and checks Last Valid after a failed explicit refresh.
+
+For automatic settled updates, pause/resume and recap coexistence, follow
+[the #5 journey](features/context-hint-interactions.md). Use `roundtrip
+--hint-automatic --evidence "$DSH_VERIFY_EVIDENCE"` separately from the #3
+flags. Existing manual journeys now explicitly pause automatic updates before
+driving refresh. Controls preserve the stored recap preference; no production
+profile/settings or real provider access is part of any journey.

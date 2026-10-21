@@ -148,6 +148,25 @@ export async function driveSharedProject({ state, run, session, save, requests, 
     await pa.wait('project-chinese-close', () => /⌸\s+❯/u.test(pa.screen()))
     await pa.type('/lang en')
     await pa.wait('project-language-en', () => !pa.screen().includes('缓存') && !pa.screen().split('\n').some(line => /⌸\s+❯/u.test(line) && line.includes('/lang')))
+    // #5 connection: stale processes must preserve the latest confirmed content
+    // and cooperate with #6's revisioned control writer, never raw-overwrite it.
+    const beforeControls = hints()
+    for (const [p, command, enabled, paused] of [
+      [pa, 'pause', true, true], [pb, 'resume', true, false],
+      [pa, 'disable', false, false], [pa, 'enable', true, false],
+    ]) {
+      const previous = primary()
+      await p.type('/hint ' + command)
+      if (command === 'enable') {
+        await p.wait('project-control-consent', () => p.screen().includes('Enable Context') && p.screen().includes('Hint?'))
+        p.send('\r')
+      }
+      await p.wait('project-control-' + command, () => primary().revision === previous.revision + 1
+        && primary().enabled === enabled && primary().paused === paused)
+      assert.deepEqual(primary().card, previous.card, 'controls preserve the latest confirmed content across processes')
+      assert.equal(hints(), beforeControls, 'control changes do not generate or replay hints')
+      save('project-control-' + command + '.json', table())
+    }
     const beforeNewSession = hints()
     await pb.type('/new')
     await pb.wait('project-new-session-pending', () => pb.screen().includes('Pending update') && !pb.screen().includes('PROJECT_SESSION_B'))

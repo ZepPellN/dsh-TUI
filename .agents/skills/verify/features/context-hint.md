@@ -2,7 +2,8 @@
 
 Source entry points: `src/commands.ts`, `src/screens/chat/run-command.tsx`,
 `src/dsh-adapter/context-hint/`, `src/dsh-adapter/oauth/summary-call.ts`.
-This is #3 only, not automatic generation, Project editing or deletion.
+This manual journey pauses #5 automatic updates after enable; the separate
+settled journey owns automatic counts. No Project editing or deletion here.
 
 ## Launch and Doctor
 

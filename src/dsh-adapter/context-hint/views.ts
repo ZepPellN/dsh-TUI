@@ -8,6 +8,7 @@ import { t } from '../../i18n.js'
 
 export interface HintView {
   enabled: boolean
+  paused: boolean
   cards?: HintResult
   failed: boolean
   projectCard?: ProjectCard
@@ -22,7 +23,7 @@ export function hintViews(read: () => HintView, subscribe: (listener: () => void
     const content = view.cards === undefined ? t('hint-pending')
       : t('hint-compact', { status: view.cards.session.status, next: view.cards.session.next })
     return view.enabled ? React.createElement(ui.Text, { dimColor: true, wrap: 'truncate-end' },
-      (view.failed ? `${t('hint-failed')} · ${content}` : content)
+      `${view.paused ? `${t('hint-paused')} · ` : ''}${view.failed ? `${t('hint-failed')} · ` : ''}${content}`
         + (view.suggestion === undefined ? '' : ` · ${t('hint-project-pending')}`)) : null
   }
   function Detail({ React, ui, close }: TuiSceneProps) {
@@ -54,6 +55,7 @@ export function hintViews(read: () => HintView, subscribe: (listener: () => void
           line(t('hint-worktree'), cleanRenderText(owner.worktree, Math.max(8, columns - 12))),
           line(t('hint-session'), cleanRenderText(owner.session, 80)),
           view.failed ? e(ui.Text, { color: 'warning' }, t('hint-failed')) : null,
+          view.paused ? e(ui.Text, { dimColor: true }, t('hint-paused')) : null,
           e(ui.Text, { bold: true }, t('hint-project-card')),
           ...(view.projectCard === undefined ? [e(ui.Text, { key: 'project-empty' }, t('hint-project-empty'))] : [
             line(t('hint-project-goal'), view.projectCard.goal), line(t('hint-project-constraints'), view.projectCard.constraints),

@@ -44,7 +44,7 @@ export const LOCAL_COMMANDS: LocalCommand[] = [
   { name: 'resume', description: 'Continue a saved session' },
   { name: 'rename', description: 'Rename the current session' },
   { name: 'recap', description: 'Generate a recap of recent session activity' },
-  { name: 'hint', description: 'Enable, refresh or view Context Hint cards' },
+  { name: 'hint', description: 'Enable, pause, resume, refresh or view Context Hint cards' },
   { name: 'rewind', description: 'Return the session to an earlier message' },
   { name: 'tree', description: 'Browse the session family tree (rewind / fork / adopt)' },
   { name: 'fork', description: 'Fork the current session into a resumable copy' },

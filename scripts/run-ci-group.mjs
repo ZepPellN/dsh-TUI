@@ -598,6 +598,7 @@ const GROUPS = {
     ["verify-searchbox-windowing", ['node', '--import', 'tsx/esm', 'scripts/verify-searchbox-windowing.tsx']],
   ],
   'channel-ui': [
+    ['verify-context-hint-interactions', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-interactions.ts']],
     ['verify-context-hint-command', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-command.ts']],
     ['verify-context-hint-input', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-input.ts']],
     ['verify-context-hint-result', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-result.ts']],

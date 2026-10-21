@@ -276,23 +276,31 @@ Full guide: [Session migration](docs/migrate.en.md).
 
 **VS Code**: use the integrated terminal or the `dsh-tui-vscode` extension. See [VS Code guide](docs/vscode.en.md). **Herdr**: run `dsh-tui` in a [Herdr](https://herdr.dev) pane; `idle` / `working` / `blocked` are reported through its local integration API.
 
-## Context Hint (manual recovery cards)
+## Context Hint (recovery cards)
 
 Off by default. `/hint enable` discloses the destination and selected content,
 then requests only this component's own local-storage read/write permissions.
-Enabling makes no model call. After a real interaction settles, `/hint refresh`
-generates the latest Session/Turn cards with the current main provider/model.
+Enabling makes no model call. Each future settled human interaction permits
+at most one automatic request with the current main provider/model; tool steps,
+streamed tokens and repaint never multiply it. Failed/cancelled turns stay truthful.
 Cards are display-only: never appended to the transcript or main-model context.
 Use `/hint view` or default `Alt+O` to expand/collapse, `Esc` to return without
 losing the draft. `/hint disable` cancels pending work but retains saved cards.
 Re-enabling after a disabled restart restores applicable cards without a summary call.
+`/hint pause` persists project pause and blocks new automatic requests, leaving
+already started valid work alone. `/hint refresh` / `retry` remain explicit
+single attempts while paused. `/hint resume` handles future interactions only,
+not paused backlog or a turn already open at resume. Opening/restoring/navigating
+never generates hints. Enabled hints (including pause) temporarily suppress old
+automatic recap and cancel pending auto recap; manual `/recap` remains available.
+Disable restores the previously effective preference without writing `recapOnOpen`.
 
 Set `contextHintShortcut: alt+p` in the `dsh-tui` config, or set
 `DSH_TUI_HINT_SHORTCUT=alt+p`. Explicit config wins; an empty string disables
 the key, preserving `/hint view`. Reserved keys, user-remapped built-ins and
 modals take priority; use the command on conflict.
 
-Each manual request selects at most 12,000 input characters of recent human,
+Each request selects at most 12,000 input characters of recent human,
 assistant and tool text plus actual turn outcomes, without the original system
 prompt, tool definitions or whole session log. Local output accumulation is
 limited to 16,000 characters including reasoning, with 2,048 output tokens
@@ -316,14 +324,14 @@ write. Review again, then explicitly confirm or reject; no silent rebase/merge.
 Pending suggestions are session-local memory, cleared on refresh, switching,
 disable or restart, not persisted.
 
-Only current project controls, latest confirmed Project and per-session cards persist: no additional raw
+Only current project opt-in/pause controls, latest confirmed Project and per-session cards persist: no additional raw
 prompt/tool-output or generation-history archive. Summaries may be sensitive
 and storage is not claimed to be encrypted. Linked Git worktrees share project
 identity; separate clones do not. Project lifetime is independent of a session.
 Concurrency uses a cooperative single-host PID lock with normal admitted storage;
 it does not protect against older uncooperative writers, guarantee network-file-
 system/power-loss durability, or provide live push updates. Reopen to reload.
-Automatic generation, independent summary-model selection and deletion controls
+Independent summary-model selection and deletion controls
 remain in subsequent tickets.
 
 ## Keybindings & Mouse

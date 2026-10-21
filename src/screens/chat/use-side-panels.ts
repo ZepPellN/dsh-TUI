@@ -93,11 +93,26 @@ export function useSidePanels(channel: ChannelUi) {
   // the dim AutoRecapRow. Failures stay silent in auto mode — `/recap`
   // surfaces them; the summary never enters the transcript or session log.
   const autoRecapSessionId = channel.agentId
+  const autoRecapAllowed = channel.autoRecapOnOpen
+  const recapRef = React.useRef(recap)
+  recapRef.current = recap
+  const previousAutoRecapSessionRef = React.useRef(autoRecapSessionId)
   React.useEffect(() => {
-    // A session switch retires the previous recap outright — an old
-    // session's 回顾 has no place above a new conversation.
-    setRecap(null)
-    if (!channel.autoRecapOnOpen) return
+    const sessionChanged = previousAutoRecapSessionRef.current !== autoRecapSessionId
+    previousAutoRecapSessionRef.current = autoRecapSessionId
+    if (sessionChanged) {
+      recapAbortRef.current?.abort()
+      recapAbortRef.current = null
+      setRecap(null)
+    }
+    // Effective suppression can change without a session switch. Retire only
+    // automatic work here; an explicit /recap remains usable while hints run.
+    if (!autoRecapAllowed) {
+      setRecap(prev => prev?.auto ? null : prev)
+      return
+    }
+    const current = sessionChanged ? null : recapRef.current
+    if (current !== null && !current.auto) return
     // No conversation yet (/new): nothing to recap, don't even fire.
     if (!channel.rows.some(row => row.kind === 'user' || row.kind === 'assistant')) return
     recapAbortRef.current?.abort()
@@ -107,7 +122,9 @@ export function useSidePanels(channel: ChannelUi) {
     setRecap({ raw: '', summary: '', error: undefined, done: false, titleApplied: false, auto: true, expanded: false, rowsAtTrigger: lastUserId })
     void channel.recapRecent({
       signal: controller.signal,
-      onText: delta => setRecap(prev => (prev ? { ...prev, raw: prev.raw + delta } : prev)),
+      onText: delta => {
+        if (!controller.signal.aborted) setRecap(prev => prev?.auto ? { ...prev, raw: prev.raw + delta } : prev)
+      },
     }).then(result => {
       if (controller.signal.aborted) return
       setRecap(prev => {
@@ -120,7 +137,7 @@ export function useSidePanels(channel: ChannelUi) {
       if (!controller.signal.aborted) setRecap(null)
     })
     return () => controller.abort()
-  }, [autoRecapSessionId])
+  }, [autoRecapSessionId, autoRecapAllowed])
   // The user starts a new message → the auto recap has served its purpose
   // (catching them up) and bows out. A newer user row is the signal; the
   // assistant's own streamed rows don't count.

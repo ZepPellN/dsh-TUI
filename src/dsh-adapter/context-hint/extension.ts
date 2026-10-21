@@ -10,7 +10,8 @@ import { liveSessionOffset, snapshotLiveSessionEvents } from '../compat/liveSess
 import { requestHint } from './request.js'
 import { parseHintResult, type HintResult } from './result.js'
 import { hintViews, type HintView } from './views.js'
-import { confirmProject, readSharedProject, setProjectEnabled, type SharedProject } from './shared-project.js'
+import { createHintInteractions } from './interactions.js'
+import { confirmProject, readSharedProject, updateProjectControls, type SharedProject } from './shared-project.js'
 import type { ProjectCard } from './result.js'
 
 export interface HintDependencies {
@@ -21,6 +22,7 @@ export interface HintDependencies {
   subscribe(listener: () => void): () => void
   shortcut?: string
   notify(text: string): void
+  changed?(): void
 }
 
 /** Admitted extension body; all effects belong to its real Cordis activation. */
@@ -28,6 +30,9 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
   const storage: TuiPluginStorage = ctx.get('tuiPluginStorage')!.open(ctx)
   let project: HintProject | undefined
   let enabled = false
+  let paused = false
+  let loading = true
+  const interactions = createHintInteractions()
   let cards: HintResult | undefined
   let projectCard: ProjectCard | undefined
   let suggestion: { card: ProjectCard; base: SharedProject; reviewed: boolean; conflict: boolean; eventOffset: number } | undefined
@@ -35,11 +40,12 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
   let failed = false
   let request: AbortController | undefined
   let revision = 0
-  let snapshot: HintView = { enabled: false, failed: false }
+  let snapshot: HintView = { enabled: false, paused: false, failed: false }
   const listeners = new Set<() => void>()
   const publish = () => {
-    snapshot = { enabled, cards, failed, projectCard, suggestion }
+    snapshot = { enabled, paused, cards, failed, projectCard, suggestion }
     for (const listener of listeners) listener()
+    deps.changed?.()
   }
   const { Compact, Detail } = hintViews(() => snapshot,
     listener => { listeners.add(listener); return () => { listeners.delete(listener) } },
@@ -72,39 +78,51 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     const capture = deps.binding.capture()
     const cwd = deps.cwd()
     const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
-    const nextProject = await resolveHintProject(cwd)
-    if (!current()) return
-    const shared = await readSharedProject(storage, nextProject)
-    if (!current()) return
-    const nextEnabled = shared.enabled
-    let nextCards: HintResult | undefined
-    let nextOffset = 0
-    let nextFailed = false
-    if (nextEnabled) {
-      const saved = (await storage.get({ key: `session:${capture.agent.session.id}` })).value
+    try {
+      const nextProject = await resolveHintProject(cwd)
       if (!current()) return
-      if (saved !== null && typeof saved === 'object') {
-        const record = saved as Record<string, unknown>
-        if (record.identity === nextProject.id && record.sessionId === capture.agent.session.id
-          && typeof record.eventOffset === 'number' && Number.isSafeInteger(record.eventOffset)
-          && record.eventOffset >= 0 && record.eventOffset <= liveSessionOffset(capture.agent.session)) {
-          try {
-            nextCards = parseHintResult(JSON.stringify(record.cards))
-            nextOffset = record.eventOffset
-            nextFailed = record.failed === true
-          } catch { nextFailed = true }
+      const shared = await readSharedProject(storage, nextProject)
+      if (!current()) return
+      const nextEnabled = shared.enabled
+      let nextCards: HintResult | undefined
+      let nextOffset = 0
+      let nextFailed = false
+      if (nextEnabled) {
+        const saved = (await storage.get({ key: `session:${capture.agent.session.id}` })).value
+        if (!current()) return
+        if (saved !== null && typeof saved === 'object') {
+          const record = saved as Record<string, unknown>
+          if (record.identity === nextProject.id && record.sessionId === capture.agent.session.id
+            && typeof record.eventOffset === 'number' && Number.isSafeInteger(record.eventOffset)
+            && record.eventOffset >= 0 && record.eventOffset <= liveSessionOffset(capture.agent.session)) {
+            try {
+              nextCards = parseHintResult(JSON.stringify(record.cards))
+              nextOffset = record.eventOffset
+              nextFailed = record.failed === true
+            } catch { nextFailed = true }
+          }
         }
       }
+      if (!current()) return
+      project = nextProject
+      projectCard = shared.card
+      suggestion = undefined
+      enabled = nextEnabled
+      paused = nextEnabled && shared.paused === true
+      loading = false
+      interactions.reset(liveSessionOffset(capture.agent.session), enabled, paused)
+      cards = nextCards
+      cardOffset = nextOffset
+      failed = nextFailed
+      publish()
+    } finally {
+      // Failed optional restoration must not suppress the user's old recap.
+      // A stale load must never settle a newer binding's restoration barrier.
+      if (current() && loading) {
+        loading = false
+        publish()
+      }
     }
-    if (!current()) return
-    project = nextProject
-    projectCard = shared.card
-    suggestion = undefined
-    enabled = nextEnabled
-    cards = nextCards
-    cardOffset = nextOffset
-    failed = nextFailed
-    publish()
   }
   const boundLoad = AsyncLocalStorage.bind(load)
   let observed = deps.binding.capture()
@@ -118,6 +136,9 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     request?.abort()
     project = undefined
     enabled = false
+    paused = false
+    loading = true
+    interactions.reset(liveSessionOffset(observed.agent.session), false, false)
     cards = undefined
     projectCard = undefined
     suggestion = undefined
@@ -128,17 +149,19 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     void boundLoad().catch(() => { if (deps.owner.current()) deps.notify(t('hint-unavailable')) })
   }))
   deps.owner.own(() => { revision++; request?.abort(); unsubscribe(); listeners.clear() })
-  return {
+  const actions = {
+    get suppressesRecap() { return loading || enabled },
     toggle,
     load: boundLoad,
     enable: AsyncLocalStorage.bind(async () => {
+      request?.abort()
       const ticket = ++revision
       const capture = deps.binding.capture()
       const cwd = deps.cwd()
       const target = await resolveHintProject(cwd)
       const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
       if (!current()) return
-      await setProjectEnabled(storage, target, true, current)
+      await updateProjectControls(storage, target, { enabled: true, paused: false }, current)
       if (!current()) return
       await boundLoad()
     }),
@@ -146,15 +169,32 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       request?.abort()
       const ticket = ++revision
       const capture = deps.binding.capture()
-      const target = project
       const cwd = deps.cwd()
-      const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
+      const target = project
       enabled = false
+      paused = false
+      loading = false
+      interactions.reset(liveSessionOffset(deps.binding.agent.session), false, false)
       suggestion = undefined
       const scenes = ctx.get('tuiScenes')
       if (scenes?.active?.id === 'context-hint') scenes.close()
       publish()
-      if (target !== undefined) await setProjectEnabled(storage, target, false, current)
+      if (target !== undefined) await updateProjectControls(storage, target, { enabled: false, paused: false },
+        () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd())
+    }),
+    setPaused: AsyncLocalStorage.bind(async (next: boolean) => {
+      if (!enabled || project === undefined) { deps.notify(t('hint-help')); return }
+      const ticket = ++revision
+      const target = project
+      const capture = deps.binding.capture()
+      const cwd = deps.cwd()
+      paused = next
+      // Both controls reset observation: resume handles only future turns,
+      // never the history accumulated while paused or an already-open turn.
+      interactions.reset(liveSessionOffset(capture.agent.session), enabled, paused)
+      publish()
+      await updateProjectControls(storage, target, { paused: next }, () => deps.owner.current() && enabled && ticket === revision
+        && deps.binding.isCurrent(capture) && cwd === deps.cwd() && project?.id === target.id)
     }),
     projectAction: AsyncLocalStorage.bind(async (action: string) => {
       const pending = suggestion
@@ -239,4 +279,12 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       } finally { if (request === controller) request = undefined }
     }),
   }
+  deps.owner.own(ctx.on('session/event', (session, event) => {
+    if (!deps.owner.current() || !deps.binding.isCurrent(observed) || session !== observed.agent.session) return
+    if (interactions.observe(event)) void actions.refresh()
+  }))
+  deps.owner.own(ctx.on('agent/inbox/claimed', ({ agent, message }) => {
+    if (deps.owner.current() && deps.binding.isCurrent(observed) && agent === observed.agent) interactions.claimed(message)
+  }))
+  return actions
 }

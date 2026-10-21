@@ -38,8 +38,9 @@ export interface ChannelUi {
   readonly agentBindingGeneration: number
   /** `dsh-tui.recapOnOpen` (default on): auto-summarize the session tail
    *  into the dim AutoRecapRow when the session opens/resumes. Read live
-   *  (settings service), so a `/settings` change applies on the next
-   *  session switch; absent settings service → on. */
+   *  from settings with temporary Context Hint suppression. Same-session
+   *  changes cancel pending auto recap; absent settings service → off.
+   *  Suppression never writes the stored preference or blocks manual recap. */
   readonly autoRecapOnOpen: boolean
   /** Settings namespace this mount registered under — the Config owner's
    *  Loader id (see `resolveSettingsNamespace`), not a fixed plugin name, so
