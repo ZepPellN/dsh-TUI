@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# One-shot installer for the elevenfund fork of dsh-tui (macOS / Linux).
+# One-shot installer for the shipped dsh-TUI release (Context Hint, DSH 0.2.1-rc.2) (macOS / Linux).
 # Usage:
-#   curl -fsSL https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.sh | bash
+#   curl -fsSL https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0/install.sh | bash
 #
 # What it does:
 #   1. npm install -g the pinned dsh engine plus the fork TUI tarball.
@@ -13,11 +13,11 @@
 #      same name+version.
 set -euo pipefail
 
-RELEASE_BASE='https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1'
-TARBALL="$RELEASE_BASE/elevenfund-dsh-tui-0.12.0.tgz"
+RELEASE_BASE='https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0'
+TARBALL="$RELEASE_BASE/dsh-tui-0.13.0.tgz"
 # Released artifact pairing, not the source checkout's compatibility target.
 # Advancing this pin requires a new TUI artifact containing the host fixes.
-ENGINE_VERSION='0.2.0-rc.2'
+ENGINE_VERSION='0.2.1-rc.2'
 TUI_NAME='@deepseek-harness-tui/dsh-tui'
 
 step() { printf '\n==> %s\n' "$1"; }

@@ -175,11 +175,11 @@ This source checkout's primary compatibility target is DSH `0.2.1-rc.2`. This ad
 Shell API, V4 session messages, declarative presets, and profile-backed settings;
 older supported hosts retain their compatibility paths. See [configuration](docs/configuration.en.md).
 
-The installer scripts and manual three-step route below use the published
-elevenfund `v0.12.0-e1` artifact, paired with DSH `0.2.0-rc.2`. That old tarball
-does not contain this checkout's `0.2.1-rc.2` compatibility and migration fixes;
-upgrading only its engine cannot supply them. No new artifact is released here.
-To verify the source target, follow the [source verification skill](.agents/skills/verify/SKILL.md)
+The installer scripts and manual three-step route below use this repository's
+`v0.13.0` Release, paired with DSH `0.2.1-rc.2`. Its tarball is the build of this
+checkout (Context Hint plus the `0.2.1-rc.2` compatibility fixes); the installers
+pin that tarball directly instead of the npm registry. To verify the source
+target, follow the [source verification skill](.agents/skills/verify/SKILL.md)
 to build and run the actual packed checkout in an isolated profile. Do not
 substitute the old release tarball or overwrite your everyday CLI/profile.
 
@@ -189,11 +189,11 @@ IDs. It requires matching profile dependencies with `@deepseek-ai/schemastery`
 instead of showing an uneditable settings page. Older hosts keep their legacy settings scope.
 
 ```sh
-# Published install: DSH 0.2.0-rc.2 + v0.12.0-e1 TUI + profile (not the source target)
+# Published install: DSH 0.2.1-rc.2 + v0.13.0 TUI + profile (not the source target)
 # Windows (PowerShell)
-irm https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.ps1 | iex
+irm https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0/install.ps1 | iex
 # macOS / Linux
-curl -fsSL https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.sh | bash
+curl -fsSL https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0/install.sh | bash
 
 # Start
 dsh-tui
@@ -201,8 +201,9 @@ dsh-tui
 dst
 ```
 
-> **Why the installer script**: this fork shares its name and version with
-> the upstream npm package (`@deepseek-harness-tui/dsh-tui@0.12.0`). With a
+> **Why the installer script**: this fork shares its npm name with the upstream
+> package (`@deepseek-harness-tui/dsh-tui`), whose registry build is a different
+> artifact. With a
 > bare `npm install -g`, the first profile initialization pulls the
 > **upstream** build from the registry, and npm may nest stale engine-line
 > dependencies inside the TUI package, breaking module loading. The script
@@ -213,7 +214,7 @@ dst
 Manual installation of the published release (the same three steps as the script):
 
 ```sh
-npm install -g @deepseek-ai/dsh@0.2.0-rc.2 https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/elevenfund-dsh-tui-0.12.0.tgz
+npm install -g @deepseek-ai/dsh@0.2.1-rc.2 https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0/dsh-tui-0.13.0.tgz
 ```
 
 Then remove the nested `node_modules/@deepseek-ai` inside the TUI package and

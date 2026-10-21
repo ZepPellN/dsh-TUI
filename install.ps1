@@ -1,6 +1,6 @@
-# One-shot installer for the elevenfund fork of dsh-tui (Windows).
+# One-shot installer for the shipped dsh-TUI release (Context Hint, DSH 0.2.1-rc.2) (Windows).
 # Usage (PowerShell):
-#   irm https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.ps1 | iex
+#   irm https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0/install.ps1 | iex
 #
 # What it does:
 #   1. npm install -g the pinned dsh engine plus the fork TUI tarball.
@@ -13,11 +13,11 @@
 #      build of the same name+version.
 $ErrorActionPreference = 'Stop'
 
-$ReleaseBase = 'https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1'
-$Tarball = "$ReleaseBase/elevenfund-dsh-tui-0.12.0.tgz"
+$ReleaseBase = 'https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0'
+$Tarball = "$ReleaseBase/dsh-tui-0.13.0.tgz"
 # Released artifact pairing, not the source checkout's compatibility target.
 # Advancing this pin requires a new TUI artifact containing the host fixes.
-$EngineVersion = '0.2.0-rc.2'
+$EngineVersion = '0.2.1-rc.2'
 $TuiName = '@deepseek-harness-tui/dsh-tui'
 
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }

@@ -113,9 +113,10 @@
 本源码检出的主适配目标为 DSH `0.2.1-rc.2`，已接入新版 Shell API、V4 会话消息、声明式预设与
 profile 设置；旧受支持版本保留兼容路径。迁移说明见[配置参考](docs/configuration.md)。
 
-下方安装脚本与手动三步使用已发布的 elevenfund `v0.12.0-e1`，配套引擎为
-`0.2.0-rc.2`。该旧 tarball 不含本检出的 `0.2.1-rc.2` 兼容与迁移修复，不能只升级
-引擎来获得这些修复；此处未发布新产物。验证源码目标请按
+下方安装脚本与手动三步使用本仓库的 `v0.13.0` Release，配套引擎为 DSH
+`0.2.1-rc.2`。该 Release 的 tarball 就是本检出的构建产物（含 Context Hint 与
+`0.2.1-rc.2` 兼容修复），安装脚本直接钉在该 tarball 上、不经过 npm registry。
+验证源码目标请按
 [源码验证技能](.agents/skills/verify/SKILL.md)构建并在隔离 profile 中运行实际打包的检出，
 不要用旧 Release tarball 代替，也不要覆盖日常 CLI/profile。
 
@@ -125,11 +126,11 @@ Schema 不兼容时，TUI 在启动阶段报错并提示修复安装，不再显
 旧 host 继续使用原有设置 scope。
 
 ```sh
-# 已发布版本安装：DSH 0.2.0-rc.2 + v0.12.0-e1 TUI + profile（不是源码目标）
+# 已发布版本安装：DSH 0.2.1-rc.2 + v0.13.0 TUI + profile（不是源码目标）
 # Windows (PowerShell)
-irm https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.ps1 | iex
+irm https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0/install.ps1 | iex
 # macOS / Linux
-curl -fsSL https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/install.sh | bash
+curl -fsSL https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0/install.sh | bash
 
 # 启动
 dsh-tui
@@ -137,12 +138,12 @@ dsh-tui
 dst
 ```
 
-> **为什么推荐一键脚本**：本 fork 与上游 npm 包同名同版本（`@deepseek-harness-tui/dsh-tui@0.12.0`）。只跑 `npm install -g` 的话，profile 首次初始化会从 registry 拉到**上游版**，且 npm 可能把旧引擎线依赖嵌套进 TUI 目录导致模块加载失败。脚本会同时完成三件事：安装固定版本引擎与本 fork、清理嵌套的旧引擎依赖、把 profile 依赖与包体钉在本 fork 的 Release tarball 上（`/update` 也不会漂回 registry 版）。
+> **为什么推荐一键脚本**：本 fork 与上游 npm 包同名（`@deepseek-harness-tui/dsh-tui`），npm registry 上是上游发行物。只跑 `npm install -g` 的话，profile 首次初始化会从 registry 拉到**上游版**，且 npm 可能把旧引擎线依赖嵌套进 TUI 目录导致模块加载失败。脚本会同时完成三件事：安装固定版本引擎与本 fork、清理嵌套的旧引擎依赖、把 profile 依赖与包体钉在本 fork 的 Release tarball 上（`/update` 也不会漂回 registry 版）。
 
 手动安装已发布版本（等价于脚本的三步）：
 
 ```sh
-npm install -g @deepseek-ai/dsh@0.2.0-rc.2 https://github.com/elevenfund/dsh-TUI/releases/download/v0.12.0-e1/elevenfund-dsh-tui-0.12.0.tgz
+npm install -g @deepseek-ai/dsh@0.2.1-rc.2 https://github.com/ZepPellN/dsh-TUI/releases/download/v0.13.0/dsh-tui-0.13.0.tgz
 ```
 
 然后删除 TUI 包内 `node_modules/@deepseek-ai` 嵌套，并把 profile
