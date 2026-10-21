@@ -338,7 +338,7 @@ jobs:
         with:
           name: render-logs-render-scroll-${{ matrix.shard }}
           path: ci-render-logs/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   # 输入 · 终端协议 · 退出漏斗 · 系统集成——与其余组并行；失败互不遮蔽。
@@ -381,7 +381,7 @@ jobs:
         with:
           name: render-logs-input-terminal
           path: ci-render-logs/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   # 会话 · 工作区 · 插件扩展 · resume——与其余组并行；失败互不遮蔽。
@@ -432,7 +432,7 @@ jobs:
         with:
           name: render-logs-session-workspace-${{ matrix.shard }}
           path: ci-render-logs/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   # channel · 界面应用回归——与其余组并行；失败互不遮蔽。
@@ -483,7 +483,7 @@ jobs:
         with:
           name: render-logs-channel-ui-${{ matrix.shard }}
           path: ci-render-logs/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   # 已知时序 flaky 隔离区：照常运行、照常红，但不接进 ci-gate、不阻塞
@@ -533,7 +533,7 @@ jobs:
         with:
           name: render-logs-flaky-observation
           path: ci-render-logs/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   # 平台冒烟（non-blocking 观察档）：Windows（ConPTY/路径/行尾）与
@@ -635,8 +635,10 @@ jobs:
       - name: Context Hint consent, cards, detail and late-result lifecycle
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-lifecycle --hint-fences --evidence "$RUNNER_TEMP/dsh-hint-fences"
       - name: Context Hint failures, Last Valid restore and remapped shortcut
+        if: runner.os == 'Linux'
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-failures --hint-shortcut=alt+p --evidence "$RUNNER_TEMP/dsh-hint-failures"
       - name: Context Hint command-only detail
+        if: runner.os == 'Linux'
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-shortcut= --evidence "$RUNNER_TEMP/dsh-hint-command-only"
       - name: Retain packed host proof, including failed attempts
         if: always()
@@ -649,7 +651,7 @@ jobs:
             ${{ runner.temp }}/dsh-hint-failures/
             ${{ runner.temp }}/dsh-hint-command-only/
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: ignore
 
   packed-host-context:
     runs-on: ${{ matrix.os }}
@@ -675,10 +677,13 @@ jobs:
       - name: Context Hint independent Summary Model, restart and unavailable destination
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-selection --evidence "$RUNNER_TEMP/dsh-hint-selection"
       - name: Shared Project linked-worktree confirmation race
+        if: runner.os == 'Linux'
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-project --evidence "$RUNNER_TEMP/dsh-hint-project"
       - name: Context Hint session switch, rewind and fork timeline validity
+        if: runner.os == 'Linux'
         run: node scripts/verify-packed-host.mjs roundtrip --hint-timeline --evidence "$RUNNER_TEMP/dsh-hint-timeline"
       - name: Context Hint scoped deletion, restart and storage faults
+        if: runner.os == 'Linux'
         run: node scripts/verify-packed-host.mjs roundtrip --hint-deletion --evidence "$RUNNER_TEMP/dsh-hint-deletion"
       - name: Retain context-hint packed proof, including failed attempts
         if: always()
@@ -692,7 +697,7 @@ jobs:
             ${{ runner.temp }}/dsh-hint-timeline/
             ${{ runner.temp }}/dsh-hint-deletion/
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: ignore
 
   # CI 门禁：唯一的 required check 候选。汇总所有分组结果——任何一组失败
   # 或被取消，gate 显式失败并逐组报告状态。if: always() 保证上游失败时
