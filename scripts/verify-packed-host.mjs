@@ -303,11 +303,12 @@ async function drive() {
       // The host can swallow a Return that lands during a transient repaint or
       // stream teardown: the command stays in the composer with no dialog open.
       // A real user presses Return again; do the same, but only when no palette
-      // or confirm panel owns Enter and the composer still holds the text.
-      await new Promise(resolve => setTimeout(resolve, 800))
+      // or confirm panel owns Enter and the composer still holds the text. The
+      // check returns as soon as the composer clears so observers still see
+      // transient notices (hint-help) at their original timing.
       const holdsText = () => viewportLines(term).some(line => /⌸\s+❯/u.test(line) && line.includes(text))
       const overlayOwnsReturn = () => /commands · \d+ items|Enter to select/u.test(screen())
-      if (holdsText() && !overlayOwnsReturn()) {
+      if (!await settled(() => !holdsText(), { timeoutMs: 800, stepMs: 50 }) && !overlayOwnsReturn()) {
         record({ session: label, event: 'return-resubmitted', text })
         await enter()
         await settled(() => !holdsText(), { timeoutMs: 6000, stepMs: 100 })
