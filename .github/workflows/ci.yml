@@ -608,7 +608,11 @@ jobs:
   # docs PRs. Only the external model HTTP boundary is synthetic.
   packed-host:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # Nine real packed-host journeys now run serially per OS (baseline, hint
+    # lifecycle, failures, command-only, automatic, selection, project,
+    # timeline, deletion). Each owns an isolated package install, so the
+    # former 30-minute budget no longer covers the suite.
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
