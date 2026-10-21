@@ -42,8 +42,15 @@ assert.equal(packed.strategy['fail-fast'], false)
 assert.equal(packed['continue-on-error'], undefined)
 assert(packed.steps.some(s => s.run?.includes('verify-packed-host.mjs')))
 assert(packed.steps.some(s => s.uses?.startsWith('actions/upload-artifact@') && s.if === 'always()'))
+const context = ci.jobs['packed-host-context']
+assert(context, 'required newer Context Hint packed job')
+assert.deepEqual(context.strategy.matrix.os, ['ubuntu-latest', 'macos-latest'])
+assert.equal(context.strategy['fail-fast'], false)
+assert(context.steps.some(s => s.run?.includes('verify-packed-host.mjs')))
+assert(context.steps.some(s => s.uses?.startsWith('actions/upload-artifact@') && s.if === 'always()'))
 const gate = ci.jobs['ci-gate']
 assert(gate.needs.includes('packed-host'))
+assert(gate.needs.includes('packed-host-context'))
 assert.equal(gate.if, 'always()')
 const step = gate.steps.find(s => s.run)
 assert.equal(step.env.PACKED_HOST, '${{ needs.packed-host.result }}')
@@ -57,7 +64,7 @@ for (const name of Object.keys(success).filter(k => !['CODE', 'CHANGES'].include
   assert.notEqual(check({ ...success, [name]: 'failure' }).status, 0, `retain existing required ${name}`)
 }
 const docs = Object.fromEntries(Object.keys(step.env).map(key => [key,
-  key === 'CODE' ? 'false' : ['CHANGES', 'PACKED_HOST'].includes(key) ? 'success' : 'skipped',
+  key === 'CODE' ? 'false' : ['CHANGES', 'PACKED_HOST', 'PACKED_HOST_CONTEXT'].includes(key) ? 'success' : 'skipped',
 ]))
 assert.equal(check(docs).status, 0, 'docs exemption does not skip real startup')
 assert.notEqual(check({ ...docs, PACKED_HOST: 'skipped' }).status, 0)
