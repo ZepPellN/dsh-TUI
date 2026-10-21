@@ -225,6 +225,20 @@ async function drive() {
     child.stderr.on('data', data => appendFileSync(join(evidence, `${label}-transport.log`), data))
     child.on('error', error => { transportError = error })
     const screen = () => viewportLines(term).join('\n')
+    const paintSettled = async () => {
+      // Completion/command palettes paint asynchronously. On slower hosts a
+      // Return sent mid-paint is swallowed (Ubuntu CI kept `/new` in the
+      // composer with the palette open), so wait for a byte-stable viewport at
+      // a human key cadence before the submitting Return.
+      const startedAt = performance.now()
+      let previous = null
+      await settled(() => {
+        const current = screen()
+        const stable = previous === current && performance.now() - startedAt >= 200
+        previous = current
+        return stable
+      }, { timeoutMs: 8000, stepMs: 50 })
+    }
     const wait = async (name, predicate) => {
       const ok = await settled(() => !transportError && predicate(), { timeoutMs: 45000, stepMs: 50 })
       await parsing
@@ -240,6 +254,7 @@ async function drive() {
       send(text)
       // A command and Enter are separate input events, just like normal typing.
       await wait('typed-' + actions.length, () => viewportLines(term).some(line => /⌸\s+❯/u.test(line) && line.includes(text)))
+      await paintSettled()
       await enter()
     }
     await runAndCleanup(async () => {
