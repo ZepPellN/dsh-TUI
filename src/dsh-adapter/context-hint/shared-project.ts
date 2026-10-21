@@ -39,12 +39,18 @@ async function coordinate<T>(current: () => boolean, operation: () => Promise<T>
   })
 }
 
-/** Shared control writers (including future pause/resume) use this helper,
- * preserving card/revision/unknown controls. No arbitrary async callback. */
+/** Shared control writers (including pause/resume and deletion) use this
+ * helper, preserving card/revision/unknown controls. No arbitrary async callback. */
 export async function updateProjectControls(storage: TuiPluginStorage, project: HintProject,
   controls: { enabled?: boolean; paused?: boolean }, current: () => boolean): Promise<SharedProject> {
   return coordinate(current, async () => {
     const latest = await readSharedProject(storage, project)
+    // A pause/resume racing a deletion elsewhere must not recreate a control
+    // envelope for hint data that the user explicitly removed. Only an explicit
+    // enable may recreate the shared record.
+    if (latest.revision === 0 && latest.card === undefined && !latest.enabled && controls.enabled !== true) {
+      throw new Error('Project hint data was deleted')
+    }
     const next = { ...latest, ...controls, revision: latest.revision + 1 }
     if (!Number.isSafeInteger(next.revision)) throw new Error('Project revision exhausted')
     await withStorageWriteGuard(current, () => storage.set({ key: project.key, value: next }))
@@ -71,5 +77,19 @@ export async function confirmProject(storage: TuiPluginStorage, project: HintPro
     if (!Number.isSafeInteger(next.revision)) throw new Error('Project revision exhausted')
     await withStorageWriteGuard(current, () => storage.set({ key: project.key, value: next }))
     return { status: 'confirmed', project: next }
+  })
+}
+
+/** Delete the whole shared Project envelope (confirmed card plus opt-in/pause
+ * controls) under the same coordination lock as every other writer. A corrupt
+ * envelope throws from the read and stays untouched instead of being cleared.
+ * Linked worktrees observe the removal on their next explicit read/restart;
+ * per-session cards live under different keys and are not touched. */
+export async function deleteSharedProject(storage: TuiPluginStorage, project: HintProject,
+  current: () => boolean): Promise<{ deleted: boolean }> {
+  return coordinate(current, async () => {
+    // Validate first: never turn an unreadable envelope into a deletion.
+    await readSharedProject(storage, project)
+    return withStorageWriteGuard(current, () => storage.delete({ key: project.key }))
   })
 }

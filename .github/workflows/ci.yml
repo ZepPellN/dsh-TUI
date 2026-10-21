@@ -639,6 +639,8 @@ jobs:
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-selection --evidence "$RUNNER_TEMP/dsh-hint-selection"
       - name: Shared Project linked-worktree confirmation race
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-project --evidence "$RUNNER_TEMP/dsh-hint-project"
+      - name: Context Hint scoped deletion, restart and storage faults
+        run: node scripts/verify-packed-host.mjs roundtrip --hint-deletion --evidence "$RUNNER_TEMP/dsh-hint-deletion"
       - name: Retain packed host proof, including failed attempts
         if: always()
         uses: actions/upload-artifact@v7
@@ -652,6 +654,7 @@ jobs:
             ${{ runner.temp }}/dsh-hint-automatic/
             ${{ runner.temp }}/dsh-hint-selection/
             ${{ runner.temp }}/dsh-hint-project/
+            ${{ runner.temp }}/dsh-hint-deletion/
           retention-days: 7
           if-no-files-found: error
 

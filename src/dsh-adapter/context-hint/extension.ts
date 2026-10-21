@@ -1,6 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { TuiPluginStorage } from '../plugin-storage.js'
-import { withStorageWriteGuard } from '../plugin-storage.js'
 import { resolveHintProject, type HintProject } from './project.js'
 import { t } from '../../i18n.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -8,12 +7,15 @@ import type { ChannelOwner } from '../channel/owner.js'
 import type { ChannelBinding } from '../channel/binding.js'
 import { liveSessionOffset, snapshotLiveSessionEvents } from '../compat/liveSession.js'
 import { requestHint } from './request.js'
-import { parseHintResult, type HintResult } from './result.js'
+import type { HintResult } from './result.js'
 import { hintViews, type HintView } from './views.js'
 import { hintSelectionPreference, type HintSelection, type HintRoute, HintSelectionError } from './selection.js'
 import { createHintInteractions } from './interactions.js'
-import { confirmProject, readSharedProject, updateProjectControls, type SharedProject } from './shared-project.js'
+import { confirmProject, deleteSharedProject, readSharedProject, updateProjectControls, type SharedProject } from './shared-project.js'
 import type { ProjectCard } from './result.js'
+import { deleteHintSession, isHintStorageFailure, readHintSession, writeHintSession } from './records.js'
+
+export type HintDeleteScope = 'session' | 'project'
 
 export interface HintDependencies {
   owner: ChannelOwner
@@ -93,7 +95,24 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
     try {
       const nextProject = await resolveHintProject(cwd)
       if (!current()) return
-      const shared = await readSharedProject(storage, nextProject)
+      let shared: SharedProject
+      try {
+        shared = await readSharedProject(storage, nextProject)
+      } catch (error) {
+        if (!current()) return
+        // Unreadable optional data never blocks the main session and is never
+        // repaired or cleared here; the user can still explicitly delete the
+        // selected hint scope (which fails loudly if storage stays unreadable).
+        project = nextProject
+        enabled = false
+        paused = false
+        failed = true
+        loading = false
+        interactions.reset(liveSessionOffset(capture.agent.session), false, false)
+        publish()
+        deps.notify(t(isHintStorageFailure(error) ? 'hint-storage-read-failed' : 'hint-storage-invalid'))
+        return
+      }
       if (!current()) return
       let nextSelection: HintSelection | undefined
       try { nextSelection = await preference.read() } catch { /* Invalid preference fails closed on refresh. */ }
@@ -104,20 +123,23 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
       let nextCardRoute: HintRoute | undefined
       let nextFailed = false
       if (nextEnabled) {
-        const saved = (await storage.get({ key: `session:${capture.agent.session.id}` })).value
-        if (!current()) return
-        if (saved !== null && typeof saved === 'object') {
-          const record = saved as Record<string, unknown>
-          if (record.identity === nextProject.id && record.sessionId === capture.agent.session.id
-            && typeof record.eventOffset === 'number' && Number.isSafeInteger(record.eventOffset)
-            && record.eventOffset >= 0 && record.eventOffset <= liveSessionOffset(capture.agent.session)) {
-            try {
-              nextCards = parseHintResult(JSON.stringify(record.cards))
-              nextOffset = record.eventOffset
-              if (typeof record.provider === 'string' && typeof record.model === 'string') nextCardRoute = { provider: record.provider, model: record.model }
-              nextFailed = record.failed === true
-            } catch { nextFailed = true }
+        const sessionId = capture.agent.session.id
+        try {
+          const read = await readHintSession(storage, nextProject.id, sessionId, liveSessionOffset(capture.agent.session))
+          if (!current()) return
+          if (read.status === 'ok') {
+            nextCards = read.record.cards
+            nextOffset = read.record.eventOffset
+            nextCardRoute = read.record.route
+            nextFailed = read.record.failed === true
+          } else if (read.status === 'corrupt') {
+            nextFailed = true
+            deps.notify(t('hint-storage-invalid'))
           }
+        } catch (error) {
+          if (!current()) return
+          nextFailed = true
+          deps.notify(t(isHintStorageFailure(error) ? 'hint-storage-read-failed' : 'hint-storage-invalid'))
         }
       }
       if (!current()) return
@@ -293,7 +315,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
         })
         if (!current()) return
         const latestCards = { session: result.session, turn: result.turn }
-        await withStorageWriteGuard(current, () => storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset, cards: latestCards, ...route } }))
+        await writeHintSession(storage, identity, session.id, { cards: latestCards, eventOffset, route }, current)
         if (!current()) return
         cards = latestCards
         projectCard = base.card
@@ -308,14 +330,64 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
         if (current()) {
           failed = true
           publish()
-          deps.notify(error instanceof HintSelectionError ? t('hint-model-unavailable', { model: modelDescription() }) : t('hint-update-failed'))
+          deps.notify(error instanceof HintSelectionError ? t('hint-model-unavailable', { model: modelDescription() })
+            : isHintStorageFailure(error) ? t('hint-storage-write-failed') : t('hint-update-failed'))
           if (cards !== undefined) {
             try {
-              await withStorageWriteGuard(current, () => storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset: cardOffset, cards, failed: true, ...cardRoute } }))
+              await writeHintSession(storage, identity, session.id, { cards, eventOffset: cardOffset, route: cardRoute, failed: true }, current)
             } catch { /* Last Valid remains visible even when storage itself failed. */ }
           }
         }
       } finally { if (request === controller) request = undefined }
+    }),
+    /** Identity shown to the host's deletion dialog before any write. */
+    scopeDescription: () => ({
+      project: project?.id ?? '',
+      worktree: project?.worktree ?? '',
+      session: String(deps.binding.agent.session.id),
+    }),
+    /** Scoped deletion with the same invalidation fence as every other writer.
+     * Aborting and bumping the revision first means a held summary, failure
+     * marker or late project confirmation can never recreate what was removed. */
+    deleteScope: AsyncLocalStorage.bind(async (scope: HintDeleteScope) => {
+      const capture = deps.binding.capture()
+      const cwd = deps.cwd()
+      const sessionId = capture.agent.session.id
+      const target = project
+      request?.abort()
+      const ticket = ++revision
+      const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture)
+        && cwd === deps.cwd() && (scope === 'session' || project === target)
+      const scenes = ctx.get('tuiScenes')
+      if (scenes?.active?.id === 'context-hint') scenes.close()
+      try {
+        if (scope === 'session') {
+          await deleteHintSession(storage, sessionId, current)
+          if (!current()) return
+          cards = undefined
+          cardOffset = 0
+          cardRoute = undefined
+          failed = false
+          suggestion = undefined
+          publish()
+          deps.notify(t('hint-delete-session-done'))
+          return
+        }
+        if (target === undefined) { deps.notify(t('hint-help')); return }
+        const result = await deleteSharedProject(storage, target, current)
+        if (!current()) return
+        enabled = false
+        paused = false
+        loading = false
+        interactions.reset(liveSessionOffset(capture.agent.session), false, false)
+        projectCard = undefined
+        suggestion = undefined
+        publish()
+        deps.notify(t(result.deleted ? 'hint-delete-project-done' : 'hint-delete-empty'))
+      } catch (error) {
+        if (!current()) return
+        deps.notify(t(isHintStorageFailure(error) ? 'hint-storage-write-failed' : 'hint-delete-failed'))
+      }
     }),
   }
   deps.owner.own(ctx.on('session/event', (session, event) => {

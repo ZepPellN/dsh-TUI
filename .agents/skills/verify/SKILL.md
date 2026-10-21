@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, manual Context Hint consent/cards/failures/shortcuts/lifecycle, settled automatic updates with pause/recap coexistence, independent Summary Model selection, and clean terminal exit with synthetic providers only.
+description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, manual Context Hint consent/cards/failures/shortcuts/lifecycle, settled automatic updates with pause/recap coexistence, independent Summary Model selection, scoped hint-data deletion with controlled storage faults, and clean terminal exit with synthetic providers only.
 ---
 
 # Verify dsh-TUI
@@ -9,6 +9,11 @@ For ticket #6, use [Shared Project Card](features/context-hint-project.md):
 `node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-project --evidence /absolute/run-owned/evidence`.
 It reuses Launch/Doctor/Cleanup below with two real processes sharing one isolated
 data HOME and linked Git worktrees; a separate clone remains isolated.
+
+For ticket #8, use [Scoped deletion and storage recovery](features/context-hint-deletion.md):
+`node scripts/verify-packed-host.mjs roundtrip --hint-deletion --evidence /absolute/run-owned/evidence`.
+It drives ordinary `/hint delete` scope/confirmation in two linked worktrees,
+released old responses, restart, and run-owned unwritable/corrupt storage faults.
 
 This is the Codex project driver. Read [features/README.md](features/README.md)
 and the matching journey first. The primary surface is the terminal, not a web

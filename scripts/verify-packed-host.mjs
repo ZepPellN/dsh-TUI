@@ -18,6 +18,7 @@ import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-s
 import { createHintInteractionProvider, driveHintInteractions } from './lib/packed-hint-interactions.mjs'
 import { driveHintSelection, restoreHintSelection, chooseHintSelection, driveHintReconsent, driveHintConsentFault, assertHintConsentIncomplete } from './lib/packed-hint-selection.mjs'
 import { driveSharedProject } from './lib/packed-host-project.mjs'
+import { driveHintDeletion } from './lib/packed-hint-deletion.mjs'
 import { packedKeys, runAndCleanup, failureText, groupProcesses } from './lib/packed-host-driver.mjs'
 
 const root = resolve(import.meta.dirname, '..')
@@ -38,6 +39,9 @@ assert(!hintSelection || (hintJourney && hintRefresh), '--hint-selection require
 assert(!hintReconsent || (hintJourney && hintRefresh), '--hint-reconsent requires --context-hint --hint-refresh')
 const hintProject = process.argv.includes('--hint-project')
 assert(!hintProject || hintJourney, '--hint-project requires --context-hint')
+// #8 owns ordinary TUI entry points, two real linked worktrees, restart and
+// controlled run-owned storage faults; it does not require the manual-card flags.
+const hintDeletion = process.argv.includes('--hint-deletion')
 const hintShortcut = process.argv.find(arg => arg.startsWith('--hint-shortcut='))?.slice('--hint-shortcut='.length)
 assert(hintShortcut === undefined || ['alt+p', ''].includes(hintShortcut), 'shortcut journey accepts alt+p or empty (command only)')
 const command = process.argv[2]?.startsWith('--') ? 'roundtrip' : process.argv[2] ?? 'roundtrip'
@@ -174,6 +178,9 @@ async function drive() {
         session: { goal: `Task ${projectOwner} only`, status: `PROJECT_SESSION_${projectOwner}`, blockers: [], next: 'Review stable context' },
         turn: { completed: [`Task ${projectOwner} observed`], findings: [], verification: ['Synthetic fixture only'], failures: [], outcome: 'completed' },
         projectSuggestion: { goal: 'PROJECT_GOAL', constraints: ['Synthetic only'], decisions: hintResponse === 'project-merged' ? ['ACCEPT_A', 'ACCEPT_B'] : [`ACCEPT_${projectOwner}`] },
+      }) : hint && hintResponse === 'valid-fresh' ? JSON.stringify({
+        session: { goal: 'Explicit regeneration after deletion', status: 'FRESH_AFTER_DELETE_OK', blockers: [], next: 'FRESH_NEXT_CHECK' },
+        turn: { completed: ['Explicit new request saved'], findings: [], verification: ['Synthetic provider fixture only'], failures: [], outcome: 'completed' },
       }) : !hint && text.includes('PROJECT_A:') ? 'PROJECT_MAIN_A_OK'
         : !hint && text.includes('PROJECT_B:') ? 'PROJECT_MAIN_B_OK'
         : hint && hintResponse === 'malformed' ? '{"session":{}}'
@@ -286,7 +293,7 @@ async function drive() {
       record({ session: label, argv: [state.bin, ...argv], cwd })
       await wait('startup', () => /Type to search sessions|⌸\s+❯/u.test(screen()) && exitCode === undefined)
       if (screen().includes('Type to search sessions')) {
-        if (hintProject) {
+        if (hintProject || hintDeletion) {
           await wait('project-workspace-ready', () => screen().includes('No sessions in this workspace yet') && !screen().includes('Loading sessions'))
           send('\x1b[C')
           await wait('project-new-session-ready', () => screen().split('\n').some(line => /❯\s+\+ New session\s*$/u.test(line)))
@@ -341,6 +348,10 @@ async function drive() {
     }
     if (hintProject) {
       await driveSharedProject({ state, run, session, save, requests, setResponse: value => { hintResponse = value } })
+      return
+    }
+    if (hintDeletion) {
+      await driveHintDeletion({ state, run, session, save, requests, fixture: selectionFixture, setResponse: value => { hintResponse = value } })
       return
     }
     if (hintJourney) {
@@ -670,7 +681,8 @@ function cleanup() {
 try {
   if (command === 'roundtrip') {
     await runAndCleanup(async () => { launch(); doctor(); await drive() }, cleanup)
-    assert(existsSync(join(evidence, 'result.json')) && existsSync(join(evidence, 'fresh.ansi')), 'proof remains after teardown')
+    assert(existsSync(join(evidence, 'result.json'))
+      && existsSync(join(evidence, hintDeletion ? 'deletion-a.ansi' : 'fresh.ansi')), 'proof remains after teardown')
   } else if (command === 'launch') launch()
   else if (command === 'doctor') doctor()
   else if (command === 'drive') await drive()

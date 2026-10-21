@@ -607,6 +607,9 @@ const GROUPS = {
     ['verify-context-hint-shared-project', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-shared-project.ts']],
     ['verify-context-hint-transport', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-transport.ts']],
     ['verify-context-hint-storage', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-storage.ts']],
+// #8 范围删除/读取校验/容量与故障边界：真实 admitted storage、真实 writer lock、
+// 文件系统不可写与损坏命名空间、key/byte 配额边界；不做 UI 替身。
+    ['verify-context-hint-deletion', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-deletion.ts']],
 // L4 composition boundary plus report/metadata lifetime fences.
     ["verify-channel-composition", ['node', '--import', 'tsx/esm', 'scripts/verify-channel-composition.ts']],
 // 状态行的读侧：会话键控、变更通知、宿主发布值的防御性收窄、绑定时的基线读取

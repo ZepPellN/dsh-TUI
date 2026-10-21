@@ -41,8 +41,8 @@ not a replacement for the real two-process acceptance above.
 Protocol: normal storage handles own all card bytes, quotas, grants and final
 commit fence. A fixed `context-hint-coordination.lock` under DATA_DIR is only a
 transient PID lock around fresh read/check/write. Every Project writer must use
-`updateProjectControls` or `confirmProject` in `shared-project.ts`; future
-pause/resume/delete/migration must join it. No model/human waits inside locks.
+`updateProjectControls`, `confirmProject` or `deleteSharedProject` in
+`shared-project.ts`; pause/resume/delete/migration must join it. No model/human waits inside locks.
 No storage CAS/public authority is added. This is cooperative single-host
 coordination, not protection from an older/uncooperative same-component writer,
 network filesystem guarantees, or power-loss durability. Reopen explicitly to

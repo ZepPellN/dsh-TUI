@@ -55,6 +55,8 @@ through real Chat/xterm, not as a substitute for the packed provider counts.
 Remote Linux/macOS runs are proven only by actual CI results.
 
 After integrating #6, also run its [Shared Project journey](context-hint-project.md).
+Ticket #8 adds the [Scoped deletion and storage recovery](context-hint-deletion.md)
+journey for `/hint delete` and controlled storage faults.
 Its connection checks use pause/resume/disable/enable from two real processes:
 each control change advances the current revision, preserves confirmed content,
 and makes no hint request. Core shared coordination remains owned by #6.
