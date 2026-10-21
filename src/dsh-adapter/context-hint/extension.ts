@@ -131,10 +131,13 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
           const read = await readHintSession(storage, nextProject.id, session.id, liveSessionOffset(session))
           if (!current()) return
           if (read.status === 'ok') {
-            if (cardApplicability(read.record.eventOffset, snapshotLiveSessionEvents(session)) === 'stale') {
-              // A saved card from an earlier point of this timeline (work done
-              // while paused/offline) is not the Last Valid Card for what is on
-              // screen now; show a pending update instead of an outdated success.
+            // Work completed while updates were PAUSED makes the saved card
+            // pending rather than Last Valid. Work that happened while Context
+            // Hint was disabled does not invalidate the retained card: the user
+            // re-enabled to see the last advice, and the next settled
+            // interaction refreshes it normally.
+            if (shared.paused === true
+              && cardApplicability(read.record.eventOffset, snapshotLiveSessionEvents(session)) === 'stale') {
               nextStale = true
             } else {
               nextCards = read.record.cards
