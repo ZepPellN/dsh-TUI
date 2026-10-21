@@ -1,7 +1,8 @@
 # dsh-TUI verification map
 
 This map covers #2's real packed-host user paths, #3's manual hints, #5's
-settled interactions, #6's shared Project and #7's timeline navigation. It is
+settled interactions, #6's shared Project, #7's timeline navigation and #8's
+scoped deletion/storage recovery. It is
 not an assertion that all TUI features or alternate entry points are covered.
 
 ## Baseline preconditions
@@ -44,6 +45,8 @@ not an assertion that all TUI features or alternate entry points are covered.
   tool-rich outcomes, pause/resume, background input/scroll and recap coexistence.
 - [Summary Model](context-hint-selection.md): independent selection, destination,
   restart and unavailable-model failures through ordinary commands.
-
 - [Timeline validity](context-hint-timeline.md): session switch, restore, rewind
   and fork keep cards on their own timeline; no auto generation on navigation.
+- [Scoped deletion and storage recovery](context-hint-deletion.md): session vs
+  shared Project deletion, linked-worktree disclosure, released old responses,
+  restart, controlled unwritable/corrupt storage and retained evidence.

@@ -355,6 +355,27 @@ write. Review again, then explicitly confirm or reject; no silent rebase/merge.
 Pending suggestions are session-local memory, cleared on refresh, switching,
 disable or restart, not persisted.
 
+`/hint delete` first asks for a scope and clearly separates "this session's latest
+cards" from "shared Project hint data". Session scope deletes only the current
+session's latest Session/Turn cards. Project scope deletes the Project Card and
+opt-in/pause state shared by linked worktrees, and both the scope description and
+the confirmation state that it affects every linked worktree of the repository.
+Nothing is deleted before confirmation; deletion affects only the selected hint
+data, never other session/Project cards, the authoritative transcript, project
+files or credentials. In-flight summaries are cancelled and fenced, so releasing
+an old response or restarting cannot rebuild deleted data. A later explicit
+refresh or settled interaction may save a new latest card; after shared Project
+deletion the feature must be explicitly re-enabled. `/hint delete session|project`
+names the scope directly (still confirmed); cancelling the scope picker deletes
+nothing.
+
+Persisted content is validated on read. Corrupt, capacity-exhausted (256 keys /
+256 KiB per namespace) or unwritable storage is reported explicitly while the main
+session keeps working: existing cards are not silently cleared, unrelated cards
+are never pruned, and corrupt bytes are not overwritten. Each session keeps one
+latest envelope only, with no summary history or raw prompt/tool-output copy;
+`/hint delete` frees only the selected hint data.
+
 Only Summary Model choice, current project opt-in/pause controls, latest confirmed Project and per-session cards persist: no additional raw
 prompt/tool-output or generation-history archive. Summaries may be sensitive
 and storage is not claimed to be encrypted. Linked Git worktrees share project
@@ -362,8 +383,8 @@ identity; separate clones do not. Project lifetime is independent of a session.
 Concurrency uses a cooperative single-host PID lock with normal admitted storage;
 it does not protect against older uncooperative writers, guarantee network-file-
 system/power-loss durability, or provide live push updates. Reopen to reload.
-Deletion controls
-remain in subsequent tickets.
+Deletion uses the same coordination lock and refuses to write when validation of
+the existing envelope fails; it does not add another store or bypass cleanup.
 
 ## Keybindings & Mouse
 

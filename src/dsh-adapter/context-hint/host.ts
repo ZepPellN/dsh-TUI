@@ -4,7 +4,7 @@ import { adapterRuntimeFor } from '../../adapter/kernel/runtime-context.js'
 import { getHostAdmission } from '../plugin-host.js'
 import { t } from '../../i18n.js'
 import { consentHintStorage, HINT_MANIFEST, HINT_READ_MANIFEST, hintStorageGranted } from './consent.js'
-import { applyHintExtension, type HintDependencies } from './extension.js'
+import { applyHintExtension, type HintDeleteScope, type HintDependencies } from './extension.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { TuiDialogConfirmRequest, TuiDialogSelectRequest } from '../dialogs.js'
 import { logMouseDebug } from '../../utils/debug.js'
@@ -153,6 +153,50 @@ export function createContextHintHost(ctx: Context, deps: HintDependencies) {
     } else if (action.startsWith('project ')) {
       if (extension === undefined) { deps.notify(t('hint-help')); return }
       await extension.projectAction(action.slice('project '.length))
+    } else if (action === 'delete' || action.startsWith('delete ')) {
+      // Deletion is an ordinary TUI entry: choose the scope, disclose what is
+      // removed (linked worktrees for shared Project data), then confirm.
+      if (mounting !== undefined) await mounting
+      if (extension === undefined) { deps.notify(t('hint-help')); return }
+      if (consent !== undefined) return
+      const requested = action.slice('delete'.length).trim()
+      if (requested !== '' && requested !== 'session' && requested !== 'project') { deps.notify(t('hint-help')); return }
+      const capture = deps.binding.capture()
+      const cwd = deps.cwd()
+      const controller = new AbortController()
+      consent = controller
+      const signal = AbortSignal.any([controller.signal, deps.owner.signal])
+      const unsubscribe = deps.subscribe(() => { if (!deps.binding.isCurrent(capture) || cwd !== deps.cwd()) controller.abort() })
+      const cancelled = () => signal.aborted || !deps.owner.current() || !deps.binding.isCurrent(capture) || cwd !== deps.cwd()
+      try {
+        await control.await()
+        const description = extension.scopeDescription()
+        let scope: HintDeleteScope | undefined
+        if (requested === 'session' || requested === 'project') scope = requested
+        else {
+          const chosen = await select?.({
+            title: t('hint-delete-title'),
+            signal,
+            options: [
+              { id: 'session', label: t('hint-delete-session-option', { session: description.session }),
+                description: t('hint-delete-session-detail') },
+              ...(description.project === '' ? [] : [{ id: 'project', label: t('hint-delete-project-option', { worktree: description.worktree }),
+                description: t('hint-delete-project-detail') }]),
+            ],
+          })
+          scope = chosen === 'session' || chosen === 'project' ? chosen : undefined
+        }
+        if (cancelled() || (scope !== 'session' && scope !== 'project')) return
+        const accepted = await confirm?.({
+          title: t(scope === 'project' ? 'hint-delete-project-confirm-title' : 'hint-delete-session-confirm-title'),
+          message: t(scope === 'project' ? 'hint-delete-project-confirm' : 'hint-delete-session-confirm', {
+            project: description.project, worktree: description.worktree, session: description.session,
+          }),
+          signal,
+        })
+        if (accepted !== true || cancelled()) return
+        await extension.deleteScope(scope)
+      } finally { unsubscribe(); if (consent === controller) consent = undefined }
     } else if (action === 'refresh' || action === 'retry') {
       if (extension === undefined) { deps.notify(t('hint-help')); return }
       await extension.refresh()

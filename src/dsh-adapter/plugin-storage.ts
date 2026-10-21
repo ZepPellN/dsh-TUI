@@ -620,27 +620,51 @@ hostContext: compositionRoot(ctx),
           })
         })
       },
-      delete: (input: { key: string }) => enqueue(async () => {
-        assertCapabilityShadowPolicy('host.storage.write', runtime.mode, runtime.slices)
-        validateStorageInput('delete', input)
-        const key = input.key
-        assertKey(key)
-        requireGrant('storage.local.write')
-        ensureDir()
-        return withFileLock(file, async () => {
-          const table = readTable()
-          if (!Object.hasOwn(table, key)) {
-            const output = { deleted: false }
+      delete: (input: { key: string }) => {
+        const current = storageWriteGuard.getStore()
+        return enqueue(async () => {
+          const assertCurrent = () => {
+            if (current !== undefined && (closed || !current())) {
+              throw new PluginStorageError('STORAGE_UNAVAILABLE', 'storage write invalidated before commit')
+            }
+          }
+          assertCurrent()
+          assertCapabilityShadowPolicy('host.storage.write', runtime.mode, runtime.slices)
+          validateStorageInput('delete', input)
+          const key = input.key
+          assertKey(key)
+          requireGrant('storage.local.write')
+          ensureDir()
+          return withFileLock(file, async () => {
+            assertCurrent()
+            const table = readTable()
+            if (!Object.hasOwn(table, key)) {
+              const output = { deleted: false }
+              validateDeleteOutput(output)
+              return output
+            }
+            delete table[key]
+            const content = JSON.stringify(table)
+            if (current === undefined) await writeFileAtomic(file, content, { mode: 0o600, dirMode: 0o700 })
+            else {
+              // Same guard fencing as `set`: prepare the replacement, recheck
+              // the caller's invalidation fence synchronously before renaming.
+              const staged = `${file}.${randomUUID()}.guarded.tmp`
+              try {
+                await writeFileAtomic(staged, content, { mode: 0o600, dirMode: 0o700 })
+                assertCurrent()
+                requireGrant('storage.local.write')
+                renameSync(staged, file)
+              } finally {
+                try { unlinkSync(staged) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+              }
+            }
+            const output = { deleted: true }
             validateDeleteOutput(output)
             return output
-          }
-          delete table[key]
-          await writeFileAtomic(file, JSON.stringify(table), { mode: 0o600, dirMode: 0o700 })
-          const output = { deleted: true }
-          validateDeleteOutput(output)
-          return output
+          })
         })
-      }),
+      },
     }
   }
 }

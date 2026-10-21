@@ -609,6 +609,9 @@ const GROUPS = {
     ['verify-context-hint-storage', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-storage.ts']],
 // #7 时间线适用性：导航（rewind/fork/切换）不继承/复活旧卡片，失败保留只属于当前时间线。
     ['verify-context-hint-timeline', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-timeline.ts']],
+// #8 范围删除/读取校验/容量与故障边界：真实 admitted storage、真实 writer lock、
+// 文件系统不可写与损坏命名空间、key/byte 配额边界；不做 UI 替身。
+    ['verify-context-hint-deletion', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-deletion.ts']],
 // L4 composition boundary plus report/metadata lifetime fences.
     ["verify-channel-composition", ['node', '--import', 'tsx/esm', 'scripts/verify-channel-composition.ts']],
 // 状态行的读侧：会话键控、变更通知、宿主发布值的防御性收窄、绑定时的基线读取
