@@ -11,6 +11,8 @@ export interface HintView {
   paused: boolean
   cards?: HintResult
   failed: boolean
+  /** The saved card belongs to an earlier point of this timeline, so it is not shown as current. */
+  stale: boolean
   model?: string
   projectCard?: ProjectCard
   suggestion?: { card: ProjectCard; reviewed: boolean; conflict: boolean }
@@ -21,8 +23,9 @@ export function hintViews(read: () => HintView, subscribe: (listener: () => void
   identity: () => { project: string; worktree: string; session: string }, shortcut: string) {
   function Compact({ React, ui }: TuiStatusViewProps) {
     const view = React.useSyncExternalStore(subscribe, read)
-    const content = view.cards === undefined ? t('hint-pending')
-      : t('hint-compact', { status: view.cards.session.status, next: view.cards.session.next })
+    const content = view.cards !== undefined ? t('hint-compact', { status: view.cards.session.status, next: view.cards.session.next })
+      : view.stale ? t('hint-stale')
+        : t('hint-pending')
     return view.enabled ? React.createElement(ui.Text, { dimColor: true, wrap: 'truncate-end' },
       `${view.paused ? `${t('hint-paused')} · ` : ''}${view.failed ? `${t('hint-failed')} · ` : ''}${content}`
         + (view.suggestion === undefined ? '' : ` · ${t('hint-project-pending')}`)) : null
@@ -57,6 +60,7 @@ export function hintViews(read: () => HintView, subscribe: (listener: () => void
           line(t('hint-session'), cleanRenderText(owner.session, 80)),
           view.model === undefined ? null : e(ui.Text, { key: 'summary-model' }, view.model),
           view.failed ? e(ui.Text, { color: 'warning' }, t('hint-failed')) : null,
+          view.stale ? e(ui.Text, { color: 'warning' }, t('hint-stale-detail')) : null,
           view.paused ? e(ui.Text, { dimColor: true }, t('hint-paused')) : null,
           e(ui.Text, { bold: true }, t('hint-project-card')),
           ...(view.projectCard === undefined ? [e(ui.Text, { key: 'project-empty' }, t('hint-project-empty'))] : [

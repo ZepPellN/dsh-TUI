@@ -297,6 +297,19 @@ never generates hints. Enabled hints (including pause) temporarily suppress old
 automatic recap and cancel pending auto recap; manual `/recap` remains available.
 Disable restores the previously effective preference without writing `recapOnOpen`.
 
+Session/Turn cards belong to the session and timeline that produced them: ordinary
+switching never carries A's card into B. Late summary results are invalidated by
+switching, rewind/fork, disable or exit, and never write into a new session or a
+closed state. Restoring a session with no new work shows its latest card without
+a summary request; if the log has interactions newer than that card (for example
+work done while paused), the old card is shown as a timeline-changed pending
+update rather than as the Last Valid Card. After rewind, Session/Turn cards that
+no longer apply are hidden as pending; a forked session does not inherit the
+parent's completed state. Neither navigation triggers a model call; they wait
+for an explicit refresh or the next settled interaction. The shared Project Card
+does not roll back with one session's rewind/fork, and Session/Turn stay isolated
+per session/worktree.
+
 `/hint model` opens a select dialog with the current Summary Model and host catalog
 (first 99 entries); use arrows/Enter to choose.
 Use `/hint model provider/model` for an independent choice, or `/hint model inherit`

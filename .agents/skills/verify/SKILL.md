@@ -10,6 +10,12 @@ For ticket #6, use [Shared Project Card](features/context-hint-project.md):
 It reuses Launch/Doctor/Cleanup below with two real processes sharing one isolated
 data HOME and linked Git worktrees; a separate clone remains isolated.
 
+For ticket #7, use [Timeline validity](features/context-hint-timeline.md):
+`node scripts/verify-packed-host.mjs roundtrip --hint-timeline --evidence /absolute/run-owned/evidence`.
+It drives ordinary `/fork`, `/rewind`, `/new` and `--resume` in two real processes
+and asserts pending/restored cards, request counts, shared Project independence
+and per-session storage isolation.
+
 This is the Codex project driver. Read [features/README.md](features/README.md)
 and the matching journey first. The primary surface is the terminal, not a web
 page. The host, loader, provider adapter, session lifecycle and persistence are
@@ -192,6 +198,15 @@ For automatic settled updates, pause/resume and recap coexistence, follow
 --hint-automatic --evidence "$DSH_VERIFY_EVIDENCE"` separately from the #3
 flags. Existing manual journeys now explicitly pause automatic updates before
 driving refresh.
+
+For session switching, restore, rewind and fork timeline validity (#7), follow
+[the timeline journey](features/context-hint-timeline.md). Its focused seam is
+`node --import tsx/esm scripts/verify-context-hint-timeline.ts` (real module,
+not a substitute for the packed counts):
+
+```sh
+node scripts/verify-packed-host.mjs roundtrip --hint-timeline --evidence "$DSH_VERIFY_EVIDENCE"
+```
 
 For independent Summary Model selection (#4), follow
 [the selection journey](features/context-hint-selection.md):
