@@ -281,6 +281,18 @@ async function drive() {
       await wait('typed-' + actions.length, () => viewportLines(term).some(line => /⌸\s+❯/u.test(line) && line.includes(text)))
       await paintSettled()
       await enter()
+      // The host can swallow a Return that lands during a transient repaint or
+      // stream teardown: the command stays in the composer with no dialog open.
+      // A real user presses Return again; do the same, but only when no palette
+      // or confirm panel owns Enter and the composer still holds the text.
+      await new Promise(resolve => setTimeout(resolve, 800))
+      const holdsText = () => viewportLines(term).some(line => /⌸\s+❯/u.test(line) && line.includes(text))
+      const overlayOwnsReturn = () => /commands · \d+ items|Enter to select/u.test(screen())
+      if (holdsText() && !overlayOwnsReturn()) {
+        record({ session: label, event: 'return-resubmitted', text })
+        await enter()
+        await settled(() => !holdsText(), { timeoutMs: 6000, stepMs: 100 })
+      }
     }
     await runAndCleanup(async () => {
       record({ session: label, argv: [state.bin, ...argv], cwd })

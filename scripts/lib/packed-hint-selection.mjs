@@ -222,6 +222,10 @@ async function probeMain({ type, wait, screen }, fixture, expected, label) {
   // not the wire array tail; still require the independently rendered reply.
   const matches = request => JSON.stringify(request.body.messages.findLast(message => message.role === 'user')).includes(marker)
   await wait('main-selection-' + label, () => fixture.requests.some(matches) && screen().includes(`MAIN_SELECTION_PROBE_OK:${marker}`))
+  // The reply text can paint before the stream settles. Typing the next command
+  // while the host is still finishing the turn drops its Return, so wait for the
+  // real status bar to report idle before handing input back.
+  await wait('main-selection-idle-' + label, () => screen().includes('idle'))
   const request = fixture.requests.find(matches)
   assert.equal(request.path, expected.path)
   assert.equal(request.body.model, expected.model, 'real main request selection before/after summary')
