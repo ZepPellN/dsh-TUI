@@ -10,6 +10,7 @@ import { liveSessionOffset, snapshotLiveSessionEvents } from '../compat/liveSess
 import { requestHint } from './request.js'
 import { parseHintResult, type HintResult } from './result.js'
 import { hintViews, type HintView } from './views.js'
+import { hintSelectionPreference, type HintSelection, type HintRoute, HintSelectionError } from './selection.js'
 import { createHintInteractions } from './interactions.js'
 import { confirmProject, readSharedProject, updateProjectControls, type SharedProject } from './shared-project.js'
 import type { ProjectCard } from './result.js'
@@ -26,14 +27,25 @@ export interface HintDependencies {
 }
 
 /** Admitted extension body; all effects belong to its real Cordis activation. */
-export function applyHintExtension(ctx: Context, deps: HintDependencies) {
+export function applyHintExtension(ctx: Context, deps: HintDependencies, storageConsented: () => boolean) {
   const storage: TuiPluginStorage = ctx.get('tuiPluginStorage')!.open(ctx)
+  const preference = hintSelectionPreference(storage)
+  let selection: HintSelection | undefined = { mode: 'inherit' }
+  const destination = () => selection?.mode === 'inherit' ? deps.route()
+    : selection?.mode === 'explicit' ? { provider: selection.provider, model: selection.model } : undefined
+  const modelDescription = () => {
+    const route = destination()
+    return t('hint-model-current', { mode: selection?.mode === 'inherit' ? t('hint-model-inherit')
+      : selection?.mode === 'explicit' ? t('hint-model-explicit') : t('hint-model-invalid'),
+    route: route === undefined ? '—' : `${route.provider}/${route.model}` })
+  }
   let project: HintProject | undefined
   let enabled = false
   let paused = false
   let loading = true
   const interactions = createHintInteractions()
   let cards: HintResult | undefined
+  let cardRoute: HintRoute | undefined
   let projectCard: ProjectCard | undefined
   let suggestion: { card: ProjectCard; base: SharedProject; reviewed: boolean; conflict: boolean; eventOffset: number } | undefined
   let cardOffset = 0
@@ -43,7 +55,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
   let snapshot: HintView = { enabled: false, paused: false, failed: false }
   const listeners = new Set<() => void>()
   const publish = () => {
-    snapshot = { enabled, paused, cards, failed, projectCard, suggestion }
+    snapshot = { enabled, paused, cards, failed, model: modelDescription(), projectCard, suggestion }
     for (const listener of listeners) listener()
     deps.changed?.()
   }
@@ -83,9 +95,13 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       if (!current()) return
       const shared = await readSharedProject(storage, nextProject)
       if (!current()) return
-      const nextEnabled = shared.enabled
+      let nextSelection: HintSelection | undefined
+      try { nextSelection = await preference.read() } catch { /* Invalid preference fails closed on refresh. */ }
+      if (!current()) return
+      const nextEnabled = shared.enabled && storageConsented()
       let nextCards: HintResult | undefined
       let nextOffset = 0
+      let nextCardRoute: HintRoute | undefined
       let nextFailed = false
       if (nextEnabled) {
         const saved = (await storage.get({ key: `session:${capture.agent.session.id}` })).value
@@ -98,6 +114,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
             try {
               nextCards = parseHintResult(JSON.stringify(record.cards))
               nextOffset = record.eventOffset
+              if (typeof record.provider === 'string' && typeof record.model === 'string') nextCardRoute = { provider: record.provider, model: record.model }
               nextFailed = record.failed === true
             } catch { nextFailed = true }
           }
@@ -105,6 +122,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       }
       if (!current()) return
       project = nextProject
+      selection = nextSelection
       projectCard = shared.card
       suggestion = undefined
       enabled = nextEnabled
@@ -113,6 +131,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       interactions.reset(liveSessionOffset(capture.agent.session), enabled, paused)
       cards = nextCards
       cardOffset = nextOffset
+      cardRoute = nextCardRoute
       failed = nextFailed
       publish()
     } finally {
@@ -140,6 +159,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     loading = true
     interactions.reset(liveSessionOffset(observed.agent.session), false, false)
     cards = undefined
+    cardRoute = undefined
     projectCard = undefined
     suggestion = undefined
     failed = false
@@ -153,13 +173,27 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
     get suppressesRecap() { return loading || enabled },
     toggle,
     load: boundLoad,
-    enable: AsyncLocalStorage.bind(async () => {
+    destination,
+    modelDescription,
+    selectModel: AsyncLocalStorage.bind(async (next: HintSelection) => {
+      request?.abort()
+      const ticket = ++revision
+      const capture = deps.binding.capture()
+      const cwd = deps.cwd()
+      const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
+      await preference.save(next, current)
+      if (!current()) return
+      selection = next
+      publish()
+      deps.notify(t('hint-model-saved', { model: modelDescription() }))
+    }),
+    enable: AsyncLocalStorage.bind(async (confirmedCurrent: () => boolean) => {
       request?.abort()
       const ticket = ++revision
       const capture = deps.binding.capture()
       const cwd = deps.cwd()
       const target = await resolveHintProject(cwd)
-      const current = () => deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
+      const current = () => confirmedCurrent() && deps.owner.current() && ticket === revision && deps.binding.isCurrent(capture) && cwd === deps.cwd()
       if (!current()) return
       await updateProjectControls(storage, target, { enabled: true, paused: false }, current)
       if (!current()) return
@@ -230,7 +264,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       } else deps.notify(t('hint-project-controls'))
     }),
     refresh: AsyncLocalStorage.bind(async () => {
-      if (!enabled || project === undefined) { deps.notify(t('hint-help')); return }
+      if (!enabled || !storageConsented() || project === undefined) { deps.notify(t('hint-help')); return }
       request?.abort()
       suggestion = undefined
       publish()
@@ -242,15 +276,19 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
       const identity = project.id
       const target = project
       const cwd = deps.cwd()
-      const route = deps.route()
-      const current = () => deps.owner.current() && enabled && request === controller && !controller.signal.aborted
+      const route = destination()
+      const selected = selection
+      const ticket = revision
+      const current = () => deps.owner.current() && enabled && storageConsented() && request === controller && !controller.signal.aborted
+        && revision === ticket
         && deps.binding.isCurrent(capture) && deps.cwd() === cwd && project?.id === identity
         && liveSessionOffset(session) === eventOffset
       try {
+        if (route === undefined || selected === undefined) throw new HintSelectionError('Invalid Summary Model preference')
         const base = await readSharedProject(storage, target)
         if (!current() || !base.enabled) return
         const result = await requestHint(ctx, {
-          ...route, events: snapshotLiveSessionEvents(session),
+          ...route, selection: selected, events: snapshotLiveSessionEvents(session),
           signal: AbortSignal.any([controller.signal, deps.owner.signal]),
         })
         if (!current()) return
@@ -263,16 +301,17 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies) {
           card: result.projectSuggestion, base, reviewed: false, conflict: false, eventOffset,
         }
         cardOffset = eventOffset
+        cardRoute = route
         failed = false
         publish()
-      } catch {
+      } catch (error) {
         if (current()) {
           failed = true
           publish()
-          deps.notify(t('hint-update-failed'))
+          deps.notify(error instanceof HintSelectionError ? t('hint-model-unavailable', { model: modelDescription() }) : t('hint-update-failed'))
           if (cards !== undefined) {
             try {
-              await withStorageWriteGuard(current, () => storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset: cardOffset, cards, failed: true, ...route } }))
+              await withStorageWriteGuard(current, () => storage.set({ key: `session:${session.id}`, value: { identity, sessionId: session.id, eventOffset: cardOffset, cards, failed: true, ...cardRoute } }))
             } catch { /* Last Valid remains visible even when storage itself failed. */ }
           }
         }

@@ -42,3 +42,5 @@ not an assertion that all TUI features or alternate entry points are covered.
   Session/Turn detail, Last Valid failures, remap/command-only and late results.
 - [Settled Context Hint](context-hint-interactions.md): automatic counts,
   tool-rich outcomes, pause/resume, background input/scroll and recap coexistence.
+- [Summary Model](context-hint-selection.md): independent selection, destination,
+  restart and unavailable-model failures through ordinary commands.

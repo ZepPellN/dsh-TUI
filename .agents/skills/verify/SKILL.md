@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, Context Hint manual and settled updates, pause/recap coexistence, shortcuts/lifecycle, and clean terminal exit with synthetic providers only.
+description: Drive dsh-TUI's packed plugin through the exact DSH 0.2.1-rc.2 host in an isolated PTY. Verify startup, persistence/resume, manual Context Hint consent/cards/failures/shortcuts/lifecycle, settled automatic updates with pause/recap coexistence, independent Summary Model selection, and clean terminal exit with synthetic providers only.
 ---
 
 # Verify dsh-TUI
@@ -191,5 +191,16 @@ For automatic settled updates, pause/resume and recap coexistence, follow
 [the #5 journey](features/context-hint-interactions.md). Use `roundtrip
 --hint-automatic --evidence "$DSH_VERIFY_EVIDENCE"` separately from the #3
 flags. Existing manual journeys now explicitly pause automatic updates before
-driving refresh. Controls preserve the stored recap preference; no production
-profile/settings or real provider access is part of any journey.
+driving refresh.
+
+For independent Summary Model selection (#4), follow
+[the selection journey](features/context-hint-selection.md):
+
+```sh
+node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-selection --evidence "$DSH_VERIFY_EVIDENCE"
+node --import tsx/esm scripts/verify-context-hint-selection.ts
+```
+
+Controls preserve the stored recap preference; no production profile/settings,
+real provider access or host settings are part of any journey. The profile-wide
+route preference is saved through admitted component storage.

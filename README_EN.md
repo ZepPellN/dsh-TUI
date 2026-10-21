@@ -282,7 +282,9 @@ Off by default. `/hint enable` discloses the destination and selected content,
 then requests only this component's own local-storage read/write permissions.
 Enabling makes no model call. Each future settled human interaction permits
 at most one automatic request with the current main provider/model; tool steps,
-streamed tokens and repaint never multiply it. Failed/cancelled turns stay truthful.
+streamed tokens and repaint never multiply it. `/hint refresh` also generates
+cards manually, inheriting the current provider/model by default or an
+independently selected Summary Model. Failed/cancelled turns stay truthful.
 Cards are display-only: never appended to the transcript or main-model context.
 Use `/hint view` or default `Alt+O` to expand/collapse, `Esc` to return without
 losing the draft. `/hint disable` cancels pending work but retains saved cards.
@@ -294,6 +296,22 @@ not paused backlog or a turn already open at resume. Opening/restoring/navigatin
 never generates hints. Enabled hints (including pause) temporarily suppress old
 automatic recap and cancel pending auto recap; manual `/recap` remains available.
 Disable restores the previously effective preference without writing `recapOnOpen`.
+
+`/hint model` opens a select dialog with the current Summary Model and host catalog
+(first 99 entries); use arrows/Enter to choose.
+Use `/hint model provider/model` for an independent choice, or `/hint model inherit`
+for per-request inheritance. Enable first for own-storage consent. Saving requires
+destination/content disclosure again; cancelling leaves the choice unchanged.
+Only the route preference is saved in this component's namespace for the current
+TUI data home, surviving restart. No credentials are copied and the main session
+model never changes. Saving generates nothing and cancels old in-flight results.
+If a saved destination disappears or its configuration becomes invalid, refresh
+fails explicitly without fallback, retaining any applicable Last Valid card.
+After revoked storage grants, re-enabling first grants only own-storage read
+access to inspect the retained choice. A different actual destination must be
+accepted before write access and generation are enabled. Cancellation, failed
+writes or interruption before that consent cannot restore an unaccepted route
+on restart; read-only access may remain, without changing the old cards.
 
 Set `contextHintShortcut: alt+p` in the `dsh-tui` config, or set
 `DSH_TUI_HINT_SHORTCUT=alt+p`. Explicit config wins; an empty string disables
@@ -324,14 +342,14 @@ write. Review again, then explicitly confirm or reject; no silent rebase/merge.
 Pending suggestions are session-local memory, cleared on refresh, switching,
 disable or restart, not persisted.
 
-Only current project opt-in/pause controls, latest confirmed Project and per-session cards persist: no additional raw
+Only Summary Model choice, current project opt-in/pause controls, latest confirmed Project and per-session cards persist: no additional raw
 prompt/tool-output or generation-history archive. Summaries may be sensitive
 and storage is not claimed to be encrypted. Linked Git worktrees share project
 identity; separate clones do not. Project lifetime is independent of a session.
 Concurrency uses a cooperative single-host PID lock with normal admitted storage;
 it does not protect against older uncooperative writers, guarantee network-file-
 system/power-loss durability, or provide live push updates. Reopen to reload.
-Independent summary-model selection and deletion controls
+Deletion controls
 remain in subsequent tickets.
 
 ## Keybindings & Mouse

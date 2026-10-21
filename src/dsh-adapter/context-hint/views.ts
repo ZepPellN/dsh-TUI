@@ -11,6 +11,7 @@ export interface HintView {
   paused: boolean
   cards?: HintResult
   failed: boolean
+  model?: string
   projectCard?: ProjectCard
   suggestion?: { card: ProjectCard; reviewed: boolean; conflict: boolean }
 }
@@ -54,6 +55,7 @@ export function hintViews(read: () => HintView, subscribe: (listener: () => void
           line(t('hint-project'), cleanRenderText(owner.project, Math.max(8, columns - 12))),
           line(t('hint-worktree'), cleanRenderText(owner.worktree, Math.max(8, columns - 12))),
           line(t('hint-session'), cleanRenderText(owner.session, 80)),
+          view.model === undefined ? null : e(ui.Text, { key: 'summary-model' }, view.model),
           view.failed ? e(ui.Text, { color: 'warning' }, t('hint-failed')) : null,
           view.paused ? e(ui.Text, { dimColor: true }, t('hint-paused')) : null,
           e(ui.Text, { bold: true }, t('hint-project-card')),

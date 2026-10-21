@@ -9,13 +9,14 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import { createInterface } from 'node:readline'
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import xterm from '@xterm/headless'
 import { settled, viewportLines, writeParsed } from './lib/term-test.mjs'
 import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-screen.mjs'
 import { createHintInteractionProvider, driveHintInteractions } from './lib/packed-hint-interactions.mjs'
+import { driveHintSelection, restoreHintSelection, chooseHintSelection, driveHintReconsent, driveHintConsentFault, assertHintConsentIncomplete } from './lib/packed-hint-selection.mjs'
 import { driveSharedProject } from './lib/packed-host-project.mjs'
 import { packedKeys, runAndCleanup, failureText, groupProcesses } from './lib/packed-host-driver.mjs'
 
@@ -29,6 +30,12 @@ const hintUi = process.argv.includes('--hint-ui')
 const hintLifecycle = process.argv.includes('--hint-lifecycle')
 const hintFences = process.argv.includes('--hint-fences')
 const hintAutomatic = process.argv.includes('--hint-automatic')
+const hintSelection = process.argv.includes('--hint-selection')
+const hintReconsent = process.argv.includes('--hint-reconsent')
+const hintConsentFaults = process.argv.includes('--hint-consent-faults')
+assert(!hintConsentFaults || hintReconsent || hintSelection, '--hint-consent-faults requires --hint-reconsent or --hint-selection')
+assert(!hintSelection || (hintJourney && hintRefresh), '--hint-selection requires --context-hint --hint-refresh')
+assert(!hintReconsent || (hintJourney && hintRefresh), '--hint-reconsent requires --context-hint --hint-refresh')
 const hintProject = process.argv.includes('--hint-project')
 assert(!hintProject || hintJourney, '--hint-project requires --context-hint')
 const hintShortcut = process.argv.find(arg => arg.startsWith('--hint-shortcut='))?.slice('--hint-shortcut='.length)
@@ -102,6 +109,14 @@ function launch() {
     // Patches replace the whole config: retain every shipped front-door value.
     writeFileSync(state.hintPatch, '- id: dsh-tui\n  config:\n    provider: deepseek-official\n    fullscreen: true\n    terminalImages: true\n    effort: max\n    sessionId: !!js process.env.DSH_TUI_RESUME_SESSION ?? undefined\n    workspace: !!js process.env.DSH_TUI_WORKSPACE_TARGET ?? undefined\n    contextHintShortcut: ' + JSON.stringify(hintShortcut) + '\n')
   }
+  if (hintSelection || hintReconsent) {
+    assert(hintShortcut === undefined, 'selection journey uses its own isolated provider overlay')
+    state.hintPatch = join(scratch, 'hint-selection.patch.yml')
+    // One real host-owned pi-ai registration declares the run-only route;
+    // mounting the same directory plugin twice would be an authoring error,
+    // not a second provider. The only replaced boundary remains external HTTP.
+    writeFileSync(state.hintPatch, '- id: llm-pi-ai\n  config:\n    providers: !!js >-\n      process.env.DSH_VERIFY_HINT_AVAILABLE === "0"\n      ? {}\n      : {\n          "hint-fixture": {\n            api: "anthropic-messages",\n            apiKeyEnv: "DEEPSEEK_API_KEY",\n            baseURL: process.env.DEEPSEEK_BASE_URL + "/summary",\n            models: [{ id: "summary-fixture", contextWindow: 32768, maxTokens: 8192, reasoningEfforts: false }],\n          },\n        }\n')
+  }
   save('run.json', state)
   console.log(`launched isolated package setup: ${scratch}`)
 }
@@ -133,12 +148,14 @@ async function drive() {
   const releaseHints = () => { for (const release of heldHints.splice(0)) release() }
   const provider = createServer(async (req, res) => {
     try {
-      assert.equal(req.url, '/v1/messages', 'exact target uses native DeepSeek Messages')
+      const url = new URL(req.url, 'http://127.0.0.1')
+      assert(['/v1/messages', ...(hintSelection || hintReconsent ? ['/summary/v1/messages'] : [])].includes(url.pathname), 'only synthetic loopback Messages destinations')
+      assert(url.search === '' || (url.pathname === '/summary/v1/messages' && url.search === '?beta=true'), 'only the real Anthropic adapter beta query is allowed')
       let body = ''
       for await (const chunk of req) body += chunk
       const json = JSON.parse(body)
       assert.equal(req.headers['x-api-key'], 'dsh-verify-synthetic-not-a-real-key')
-      requests.push({ path: req.url, body: json })
+      requests.push({ path: url.pathname, url: req.url, body: json })
       save('provider-requests.json', requests)
       if (interactionProvider?.handle(json, res)) return
       const last = [...json.messages].reverse().find(m => m.role === 'user')
@@ -164,6 +181,7 @@ async function drive() {
         session: { goal: 'Summarize this interaction', status: hintResponse === 'hold' ? 'LATE_WRONG_HINT' : 'BOUNDARY_SUMMARY_OK', blockers: [], next: hintResponse === 'hold-valid' ? 'BACKGROUND_NEXT_CHECK' : 'NEXT_CHECK' },
         turn: { completed: ['Reply acknowledged'], findings: [], verification: ['Synthetic provider fixture only'], failures: [], outcome: 'completed' },
       }) : text.includes('Create a compact session recap') ? JSON.stringify({ title: 'Synthetic recap', summary: 'DSH_VERIFY_RECAP_OK' })
+        : text.includes('VERIFY_MODEL_PROBE_') ? `MAIN_SELECTION_PROBE_OK:${text.match(/VERIFY_MODEL_PROBE_[\w-]+/u)?.[0]}`
         : text.includes('VERIFY_SECOND') ? 'DSH_VERIFY_RESTORED_OK'
         : text.includes('VERIFY_FIRST') ? (hintUi && primaryFirst ? 'DSH_VERIFY_FIRST_OK\n' + Array.from({ length: 45 }, (_, i) => `HINT_SCROLL_${String(i).padStart(2, '0')}`).join('\n') + '\n' : '') + 'DSH_VERIFY_FIRST_OK' : 'DSH_VERIFY_RECAP_OK'
       const respond = () => {
@@ -193,6 +211,9 @@ async function drive() {
   const active = new Set()
   const actions = []
   const record = action => { actions.push({ at: new Date().toISOString(), ...action }); save('actions.json', actions) }
+  const selectionFixture = { record, requests, setResponse: value => { hintResponse = value }, heldHints, releaseHints,
+    readGrants: () => JSON.parse(readFileSync(join(state.scratch, 'home/.dsh-tui/extension-grants.json'), 'utf8')),
+    readStorage: () => JSON.parse(readFileSync(join(state.scratch, 'home/.dsh-tui/plugin-storage/dsh-tui.context-hint.json'), 'utf8')) }
   async function session(label, args, journey, options = {}) {
     const cwd = options.cwd ?? join(state.scratch, 'workspace')
     const term = new Terminal({ cols: 110, rows: 32, scrollback: 2000, allowProposedApi: true })
@@ -283,6 +304,13 @@ async function drive() {
       }
       await wait('ready', () => /⌸\s+❯/u.test(screen()) && exitCode === undefined)
       await journey({ wait, type, screen, send })
+      if (options.interrupt) {
+        record({ session: label, action: 'SIGTERM owned child before destination consent' })
+        child.stdin.write('{"stop":true}\n')
+        await wait('interrupted', () => exitCode !== undefined)
+        record({ session: label, exitCode, intentionalInterruption: true })
+        return
+      }
       await type('/exit')
       await wait('exit', () => exitCode !== undefined)
       assert.equal(exitCode, 0, 'normal user exit must be zero')
@@ -379,6 +407,8 @@ async function drive() {
           let stored = readFileSync(join(state.scratch, 'home/.dsh-tui/plugin-storage/dsh-tui.context-hint.json'), 'utf8')
           assert(stored.includes('BOUNDARY_SUMMARY_OK'), 'actual latest card persisted by admitted component')
           assert(!stored.includes('VERIFY_FIRST'), 'no new raw prompt archive')
+          if (hintSelection) await driveHintSelection({ type, wait, screen, send }, selectionFixture)
+          else if (hintReconsent) await chooseHintSelection({ type, wait, screen, send }, selectionFixture, 'hint-fixture/summary-fixture')
           if (hintUi) {
             hintResponse = 'hold-valid'
             await type('/hint refresh')
@@ -549,8 +579,52 @@ async function drive() {
           assert.equal(countHints(), beforeEnable + 1, 'failed refresh retains the restored Last Valid without repair')
         })
       }
-      save('result.json', { passed: true, target, feature: hintRefresh ? 'context-hint-refresh' : 'context-hint-consent',
-        scenarios: { hintFailures, hintUi, hintLifecycle, hintFences, hintShortcut }, requests: requests.length, platform: process.platform })
+      if (hintSelection || hintReconsent) {
+        const resume = readFileSync(join(state.scratch, 'home/.dsh-tui/resume.txt'), 'utf8').trim()
+        const grantsPath = join(state.scratch, 'home/.dsh-tui/extension-grants.json')
+        const revoke = () => {
+          const grants = selectionFixture.readGrants()
+          delete grants.grants['dsh-tui.context-hint']
+          writeFileSync(grantsPath, JSON.stringify(grants))
+        }
+        if (hintSelection || hintConsentFaults) {
+          revoke()
+          const storageDir = join(state.scratch, 'home/.dsh-tui/plugin-storage')
+          const retained = JSON.stringify(selectionFixture.readStorage())
+          chmodSync(storageDir, 0o500)
+          try {
+            await session('selection-consent-fault', ['--resume', resume], ui => driveHintConsentFault(ui, selectionFixture))
+            await session('selection-consent-fault-restart', ['--resume', resume], ui => assertHintConsentIncomplete(ui, selectionFixture))
+            assert.equal(JSON.stringify(selectionFixture.readStorage()), retained, 'readable-but-unwritable namespace is unchanged')
+          } finally { chmodSync(storageDir, 0o700) }
+          revoke()
+          await session('selection-consent-interrupted', ['--resume', resume], async ({ type, wait, screen, send }) => {
+            await type('/hint enable')
+            await wait('interrupted-inherited-disclosure', () => screen().includes('Destination deepseek-official/deepseek-flash.'))
+            send('\r')
+            await wait('interrupted-retained-disclosure', () => screen().includes('Destination hint-fixture/summary-fixture.'))
+          }, { interrupt: true })
+          await session('selection-consent-interrupted-restart', ['--resume', resume], ui => assertHintConsentIncomplete(ui, selectionFixture))
+        }
+        revoke()
+        await session('selection-reconsent', ['--resume', resume], ui => driveHintReconsent(ui, selectionFixture))
+        if (hintSelection) {
+          await session('selection-restored', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture))
+          // Remove only the run-owned synthetic provider from the actual next
+          // host composition. Saved explicit selection must fail, not inherit.
+          env.DSH_VERIFY_HINT_AVAILABLE = '0'
+          await session('selection-unavailable', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture, 'provider-removed'))
+          env.DSH_VERIFY_HINT_AVAILABLE = '1'
+          const storagePath = join(state.scratch, 'home/.dsh-tui/plugin-storage/dsh-tui.context-hint.json')
+          const storage = selectionFixture.readStorage()
+          // Corrupt only this run's own route-only preference, after host exit.
+          storage['summary-model'] = { mode: 'explicit', provider: 'hint-fixture', model: 42 }
+          writeFileSync(storagePath, JSON.stringify(storage))
+          await session('selection-invalid', ['--resume', resume], ui => restoreHintSelection(ui, selectionFixture, 'invalid-preference'))
+        }
+      }
+      save('result.json', { passed: true, target, feature: hintSelection ? 'context-hint-selection' : hintRefresh ? 'context-hint-refresh' : 'context-hint-consent',
+        scenarios: { hintFailures, hintUi, hintLifecycle, hintFences, hintShortcut, hintSelection, hintReconsent: hintReconsent || hintSelection, hintConsentFaults: hintConsentFaults || hintSelection }, requests: requests.length, platform: process.platform })
       return
     }
     await session('fresh', [], async ({ type, wait, screen }) => {
