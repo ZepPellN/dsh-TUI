@@ -607,6 +607,8 @@ const GROUPS = {
     ['verify-context-hint-shared-project', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-shared-project.ts']],
     ['verify-context-hint-transport', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-transport.ts']],
     ['verify-context-hint-storage', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-storage.ts']],
+// #7 时间线适用性：导航（rewind/fork/切换）不继承/复活旧卡片，失败保留只属于当前时间线。
+    ['verify-context-hint-timeline', ['node', '--import', 'tsx/esm', 'scripts/verify-context-hint-timeline.ts']],
 // L4 composition boundary plus report/metadata lifetime fences.
     ["verify-channel-composition", ['node', '--import', 'tsx/esm', 'scripts/verify-channel-composition.ts']],
 // 状态行的读侧：会话键控、变更通知、宿主发布值的防御性收窄、绑定时的基线读取

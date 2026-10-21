@@ -18,6 +18,7 @@ import { workspacePickerReady, newSessionActionReady } from './lib/packed-host-s
 import { createHintInteractionProvider, driveHintInteractions } from './lib/packed-hint-interactions.mjs'
 import { driveHintSelection, restoreHintSelection, chooseHintSelection, driveHintReconsent, driveHintConsentFault, assertHintConsentIncomplete } from './lib/packed-hint-selection.mjs'
 import { driveSharedProject } from './lib/packed-host-project.mjs'
+import { driveHintTimeline } from './lib/packed-hint-timeline.mjs'
 import { packedKeys, runAndCleanup, failureText, groupProcesses } from './lib/packed-host-driver.mjs'
 
 const root = resolve(import.meta.dirname, '..')
@@ -38,6 +39,8 @@ assert(!hintSelection || (hintJourney && hintRefresh), '--hint-selection require
 assert(!hintReconsent || (hintJourney && hintRefresh), '--hint-reconsent requires --context-hint --hint-refresh')
 const hintProject = process.argv.includes('--hint-project')
 assert(!hintProject || hintJourney, '--hint-project requires --context-hint')
+const hintTimeline = process.argv.includes('--hint-timeline')
+assert(!hintTimeline || !hintProject, '--hint-timeline and --hint-project are separate journeys')
 const hintShortcut = process.argv.find(arg => arg.startsWith('--hint-shortcut='))?.slice('--hint-shortcut='.length)
 assert(hintShortcut === undefined || ['alt+p', ''].includes(hintShortcut), 'shortcut journey accepts alt+p or empty (command only)')
 const command = process.argv[2]?.startsWith('--') ? 'roundtrip' : process.argv[2] ?? 'roundtrip'
@@ -170,17 +173,26 @@ async function drive() {
       }
       if (hint && hintResponse === 'timeout') { res.writeHead(200, { 'content-type': 'text/event-stream' }); res.flushHeaders(); return }
       const projectOwner = text.includes('PROJECT_A:') ? 'A' : 'B'
+      const timelineStatus = { 'tl-one': 'TL_STATUS_ONE', 'tl-two': 'TL_STATUS_TWO', 'tl-r': 'TL_STATUS_R', 'tl-fork': 'TL_FORK_STATUS' }[hintResponse]
       const answer = hint && hintResponse.startsWith('project') ? JSON.stringify({
         session: { goal: `Task ${projectOwner} only`, status: `PROJECT_SESSION_${projectOwner}`, blockers: [], next: 'Review stable context' },
         turn: { completed: [`Task ${projectOwner} observed`], findings: [], verification: ['Synthetic fixture only'], failures: [], outcome: 'completed' },
         projectSuggestion: { goal: 'PROJECT_GOAL', constraints: ['Synthetic only'], decisions: hintResponse === 'project-merged' ? ['ACCEPT_A', 'ACCEPT_B'] : [`ACCEPT_${projectOwner}`] },
+      }) : hint && timelineStatus !== undefined ? JSON.stringify({
+        session: { goal: 'Summarize this interaction', status: timelineStatus, blockers: [], next: 'TL_NEXT' },
+        turn: { completed: ['Timeline interaction observed'], findings: [], verification: ['Synthetic fixture only'], failures: [], outcome: 'completed' },
       }) : !hint && text.includes('PROJECT_A:') ? 'PROJECT_MAIN_A_OK'
         : !hint && text.includes('PROJECT_B:') ? 'PROJECT_MAIN_B_OK'
         : hint && hintResponse === 'malformed' ? '{"session":{}}'
         : hint && hintResponse === 'overflow' ? 'x'.repeat(16001) : hint ? JSON.stringify({
         session: { goal: 'Summarize this interaction', status: hintResponse === 'hold' ? 'LATE_WRONG_HINT' : 'BOUNDARY_SUMMARY_OK', blockers: [], next: hintResponse === 'hold-valid' ? 'BACKGROUND_NEXT_CHECK' : 'NEXT_CHECK' },
         turn: { completed: ['Reply acknowledged'], findings: [], verification: ['Synthetic provider fixture only'], failures: [], outcome: 'completed' },
-      }) : text.includes('Create a compact session recap') ? JSON.stringify({ title: 'Synthetic recap', summary: 'DSH_VERIFY_RECAP_OK' })
+      }) : !hint && text.includes('VERIFY_TL_ONE') ? 'DSH_VERIFY_TL_ONE_OK'
+        : !hint && text.includes('VERIFY_TL_TWO') ? 'DSH_VERIFY_TL_TWO_OK'
+        : !hint && text.includes('VERIFY_TL_THREE') ? 'DSH_VERIFY_TL_THREE_OK'
+        : !hint && text.includes('VERIFY_TL_PAUSED') ? 'DSH_VERIFY_TL_PAUSED_OK'
+        : !hint && text.includes('VERIFY_FORK_ONE') ? 'DSH_VERIFY_FORK_ONE_OK'
+        : text.includes('Create a compact session recap') ? JSON.stringify({ title: 'Synthetic recap', summary: 'DSH_VERIFY_RECAP_OK' })
         : text.includes('VERIFY_MODEL_PROBE_') ? `MAIN_SELECTION_PROBE_OK:${text.match(/VERIFY_MODEL_PROBE_[\w-]+/u)?.[0]}`
         : text.includes('VERIFY_SECOND') ? 'DSH_VERIFY_RESTORED_OK'
         : text.includes('VERIFY_FIRST') ? (hintUi && primaryFirst ? 'DSH_VERIFY_FIRST_OK\n' + Array.from({ length: 45 }, (_, i) => `HINT_SCROLL_${String(i).padStart(2, '0')}`).join('\n') + '\n' : '') + 'DSH_VERIFY_FIRST_OK' : 'DSH_VERIFY_RECAP_OK'
@@ -337,6 +349,12 @@ async function drive() {
   try {
     if (hintAutomatic) {
       await driveHintInteractions({ session, requests, save, fixture: interactionProvider, state })
+      return
+    }
+    if (hintTimeline) {
+      await driveHintTimeline({ state, session, requests, save, setResponse: value => { hintResponse = value }, heldHints, releaseHints })
+      save('result.json', { passed: true, target, feature: 'context-hint-timeline',
+        scenarios: { hintTimeline: true }, requests: requests.length, platform: process.platform })
       return
     }
     if (hintProject) {

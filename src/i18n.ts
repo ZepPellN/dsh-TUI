@@ -637,6 +637,8 @@ const dict = {
   'hint-model-saved': { zh: '已保存 {{model}}；不改变主模型，不自动生成。', en: 'Saved {{model}}; main model unchanged, no generation.' },
   'hint-model-unavailable': { zh: '摘要目标或选择不可用；不回退。{{model}} · 保留适用的最后有效卡片，不自动重试。/hint model 查看或重新选择。', en: 'Summary destination or preference unavailable; no fallback. {{model}} · Applicable Last Valid retained, no automatic retry. /hint model to inspect or choose again.' },
   'hint-pending': { zh: 'Context Hint · 待更新 · /hint refresh', en: 'Context Hint · Pending update · /hint refresh' },
+  'hint-stale': { zh: 'Context Hint · 待更新（时间线已变化）· /hint refresh', en: 'Context Hint · Pending update (timeline changed) · /hint refresh' },
+  'hint-stale-detail': { zh: '已保存卡片属于旧时间线，未作为最后有效卡片显示。', en: 'Saved card belongs to an earlier timeline; not shown as Last Valid.' },
   'hint-compact': { zh: 'Context Hint · {{status}} → {{next}}', en: 'Context Hint · {{status}} → {{next}}' },
   'hint-failed': { zh: '更新失败（最后有效卡片）', en: 'Update failed (Last Valid)' },
   'hint-update-failed': { zh: 'Context Hint 更新失败：保留最后有效卡片；/hint retry 手动重试。', en: 'Context Hint update failed: Last Valid retained; /hint retry for an explicit new attempt.' },

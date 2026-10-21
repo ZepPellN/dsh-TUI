@@ -210,6 +210,14 @@ provider/model 生成最新 Session/Turn 卡片；工具步骤、token、重绘�
 开启（含暂停）期间临时抑制旧自动 recap 并取消其在途请求，手动 `/recap` 保留；
 禁用后恢复此前有效偏好，不写入或改动 `recapOnOpen` 设置。
 
+Session/Turn 卡片只属于生成时的会话与时间线：普通切换不会把 A 的卡片带到 B；
+晚到的摘要结果在切换、rewind/fork、失效、禁用或退出后作废，不写回新会话或已关闭状态。
+恢复没有新工作的会话直接显示该会话最新卡片，不产生摘要请求；若该会话在卡片之后还有
+未摘要的交互（例如暂停期间完成的工作），旧卡片显示为“时间线已变化”的待更新，
+不冒充最后有效卡片。rewind 后不再适用的 Session/Turn 卡片隐藏为待更新，fork 的新会话
+不继承父会话的完成状态；两者都不自动调用模型，只等显式刷新或下一次真实交互结束。
+共享 Project Card 不随单会话 rewind/fork 回滚；不同会话/worktree 的 Session/Turn 继续隔离。
+
 `/hint model` 在选择对话框展示当前 Summary Model 与宿主模型目录（最多99项），用方向键/Enter 选择；
 `/hint model provider/model` 独立选择，`/hint model inherit` 恢复按请求继承。
 先开启以取得自己的存储授权；保存前再次披露目标及发送内容，取消不改变选择。

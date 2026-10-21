@@ -8,7 +8,8 @@ import type { ChannelOwner } from '../channel/owner.js'
 import type { ChannelBinding } from '../channel/binding.js'
 import { liveSessionOffset, snapshotLiveSessionEvents } from '../compat/liveSession.js'
 import { requestHint } from './request.js'
-import { parseHintResult, type HintResult } from './result.js'
+import type { HintResult } from './result.js'
+import { latestInteractionOffset, restoreTimelineCard } from './timeline.js'
 import { hintViews, type HintView } from './views.js'
 import { hintSelectionPreference, type HintSelection, type HintRoute, HintSelectionError } from './selection.js'
 import { createHintInteractions } from './interactions.js'
@@ -50,12 +51,13 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
   let suggestion: { card: ProjectCard; base: SharedProject; reviewed: boolean; conflict: boolean; eventOffset: number } | undefined
   let cardOffset = 0
   let failed = false
+  let stale = false
   let request: AbortController | undefined
   let revision = 0
-  let snapshot: HintView = { enabled: false, paused: false, failed: false }
+  let snapshot: HintView = { enabled: false, paused: false, failed: false, stale: false }
   const listeners = new Set<() => void>()
   const publish = () => {
-    snapshot = { enabled, paused, cards, failed, model: modelDescription(), projectCard, suggestion }
+    snapshot = { enabled, paused, cards, failed, stale, model: modelDescription(), projectCard, suggestion }
     for (const listener of listeners) listener()
     deps.changed?.()
   }
@@ -103,21 +105,30 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
       let nextOffset = 0
       let nextCardRoute: HintRoute | undefined
       let nextFailed = false
+      let nextStale = false
       if (nextEnabled) {
-        const saved = (await storage.get({ key: `session:${capture.agent.session.id}` })).value
+        const session = capture.agent.session
+        const saved = (await storage.get({ key: `session:${session.id}` })).value
         if (!current()) return
-        if (saved !== null && typeof saved === 'object') {
-          const record = saved as Record<string, unknown>
-          if (record.identity === nextProject.id && record.sessionId === capture.agent.session.id
-            && typeof record.eventOffset === 'number' && Number.isSafeInteger(record.eventOffset)
-            && record.eventOffset >= 0 && record.eventOffset <= liveSessionOffset(capture.agent.session)) {
-            try {
-              nextCards = parseHintResult(JSON.stringify(record.cards))
-              nextOffset = record.eventOffset
-              if (typeof record.provider === 'string' && typeof record.model === 'string') nextCardRoute = { provider: record.provider, model: record.model }
-              nextFailed = record.failed === true
-            } catch { nextFailed = true }
-          }
+        const restored = restoreTimelineCard({
+          value: saved,
+          identity: nextProject.id,
+          sessionId: String(session.id),
+          liveOffset: liveSessionOffset(session),
+          events: snapshotLiveSessionEvents(session),
+        })
+        if (restored.state === 'current') {
+          nextCards = restored.card.cards
+          nextOffset = restored.card.eventOffset
+          nextCardRoute = restored.card.route
+          nextFailed = restored.card.failed
+        } else if (restored.state === 'stale') {
+          // A saved card from an earlier point of this timeline (work done
+          // while paused/offline) is not the Last Valid Card for what is on
+          // screen now; show a pending update instead of an outdated success.
+          nextStale = true
+        } else if (restored.state === 'corrupt') {
+          nextFailed = true
         }
       }
       if (!current()) return
@@ -133,6 +144,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
       cardOffset = nextOffset
       cardRoute = nextCardRoute
       failed = nextFailed
+      stale = nextStale
       publish()
     } finally {
       // Failed optional restoration must not suppress the user's old recap.
@@ -163,6 +175,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
     projectCard = undefined
     suggestion = undefined
     failed = false
+    stale = false
     const scenes = ctx.get('tuiScenes')
     if (scenes?.active?.id === 'context-hint') scenes.close()
     publish()
@@ -210,6 +223,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
       loading = false
       interactions.reset(liveSessionOffset(deps.binding.agent.session), false, false)
       suggestion = undefined
+      stale = false
       const scenes = ctx.get('tuiScenes')
       if (scenes?.active?.id === 'context-hint') scenes.close()
       publish()
@@ -238,7 +252,7 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
       const cwd = deps.cwd()
       const current = () => deps.owner.current() && enabled && suggestion === pending && project === target
         && deps.binding.isCurrent(capture) && deps.cwd() === cwd
-        && liveSessionOffset(capture.agent.session) === pending.eventOffset
+        && latestInteractionOffset(snapshotLiveSessionEvents(capture.agent.session)) === pending.eventOffset
       if (action === 'reject') {
         suggestion = undefined
         publish()
@@ -267,12 +281,17 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
       if (!enabled || !storageConsented() || project === undefined) { deps.notify(t('hint-help')); return }
       request?.abort()
       suggestion = undefined
+      stale = false
       publish()
       const controller = new AbortController()
       request = controller
       const capture = deps.binding.capture()
       const session = capture.agent.session
-      const eventOffset = liveSessionOffset(session)
+      // Anchor to the SETTLED INTERACTION, not the raw log length: the host can
+      // append bookkeeping (e.g. a generated session/title) while this request
+      // is in flight, which does not make the summarized interaction stale.
+      const events = snapshotLiveSessionEvents(session)
+      const eventOffset = latestInteractionOffset(events)
       const identity = project.id
       const target = project
       const cwd = deps.cwd()
@@ -282,13 +301,13 @@ export function applyHintExtension(ctx: Context, deps: HintDependencies, storage
       const current = () => deps.owner.current() && enabled && storageConsented() && request === controller && !controller.signal.aborted
         && revision === ticket
         && deps.binding.isCurrent(capture) && deps.cwd() === cwd && project?.id === identity
-        && liveSessionOffset(session) === eventOffset
+        && latestInteractionOffset(snapshotLiveSessionEvents(session)) === eventOffset
       try {
         if (route === undefined || selected === undefined) throw new HintSelectionError('Invalid Summary Model preference')
         const base = await readSharedProject(storage, target)
         if (!current() || !base.enabled) return
         const result = await requestHint(ctx, {
-          ...route, selection: selected, events: snapshotLiveSessionEvents(session),
+          ...route, selection: selected, events,
           signal: AbortSignal.any([controller.signal, deps.owner.signal]),
         })
         if (!current()) return
