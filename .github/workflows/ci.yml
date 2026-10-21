@@ -606,13 +606,14 @@ jobs:
 
   # Always exercise the actual tarball through the official loader, even for
   # docs PRs. Only the external model HTTP boundary is synthetic.
+  # Packed-host work is split into two jobs per OS. Each journey owns an
+  # isolated package install; nine serial journeys no longer fit the hosted
+  # macOS job budget (jobs parked past 15 minutes are cancelled by the runner
+  # pool), so the lifecycle/manual-cards journeys and the newer interaction
+  # journeys run in parallel jobs.
   packed-host:
     runs-on: ${{ matrix.os }}
-    # Nine real packed-host journeys now run serially per OS (baseline, hint
-    # lifecycle, failures, command-only, automatic, selection, project,
-    # timeline, deletion). Each owns an isolated package install, so the
-    # former 30-minute budget no longer covers the suite.
-    timeout-minutes: 50
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -637,16 +638,6 @@ jobs:
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-failures --hint-shortcut=alt+p --evidence "$RUNNER_TEMP/dsh-hint-failures"
       - name: Context Hint command-only detail
         run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-ui --hint-shortcut= --evidence "$RUNNER_TEMP/dsh-hint-command-only"
-      - name: Context Hint settled interactions, pause and recap coexistence
-        run: node scripts/verify-packed-host.mjs roundtrip --hint-automatic --evidence "$RUNNER_TEMP/dsh-hint-automatic"
-      - name: Context Hint independent Summary Model, restart and unavailable destination
-        run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-selection --evidence "$RUNNER_TEMP/dsh-hint-selection"
-      - name: Shared Project linked-worktree confirmation race
-        run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-project --evidence "$RUNNER_TEMP/dsh-hint-project"
-      - name: Context Hint session switch, rewind and fork timeline validity
-        run: node scripts/verify-packed-host.mjs roundtrip --hint-timeline --evidence "$RUNNER_TEMP/dsh-hint-timeline"
-      - name: Context Hint scoped deletion, restart and storage faults
-        run: node scripts/verify-packed-host.mjs roundtrip --hint-deletion --evidence "$RUNNER_TEMP/dsh-hint-deletion"
       - name: Retain packed host proof, including failed attempts
         if: always()
         uses: actions/upload-artifact@v7
@@ -657,6 +648,44 @@ jobs:
             ${{ runner.temp }}/dsh-hint-fences/
             ${{ runner.temp }}/dsh-hint-failures/
             ${{ runner.temp }}/dsh-hint-command-only/
+          retention-days: 7
+          if-no-files-found: error
+
+  packed-host-context:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts --fetch-timeout 600000
+      - run: pnpm compile
+      - name: Context Hint settled interactions, pause and recap coexistence
+        run: node scripts/verify-packed-host.mjs roundtrip --hint-automatic --evidence "$RUNNER_TEMP/dsh-hint-automatic"
+      - name: Context Hint independent Summary Model, restart and unavailable destination
+        run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-refresh --hint-selection --evidence "$RUNNER_TEMP/dsh-hint-selection"
+      - name: Shared Project linked-worktree confirmation race
+        run: node scripts/verify-packed-host.mjs roundtrip --context-hint --hint-project --evidence "$RUNNER_TEMP/dsh-hint-project"
+      - name: Context Hint session switch, rewind and fork timeline validity
+        run: node scripts/verify-packed-host.mjs roundtrip --hint-timeline --evidence "$RUNNER_TEMP/dsh-hint-timeline"
+      - name: Context Hint scoped deletion, restart and storage faults
+        run: node scripts/verify-packed-host.mjs roundtrip --hint-deletion --evidence "$RUNNER_TEMP/dsh-hint-deletion"
+      - name: Retain context-hint packed proof, including failed attempts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: packed-host-context-${{ matrix.os }}-${{ github.run_id }}
+          path: |
             ${{ runner.temp }}/dsh-hint-automatic/
             ${{ runner.temp }}/dsh-hint-selection/
             ${{ runner.temp }}/dsh-hint-project/
@@ -670,7 +699,7 @@ jobs:
   # gate 仍然运行（被跳过的 check 不会阻塞合并，失败才会）；后续 CI 内部
   # 再拆组、改名、加 matrix，branch protection 只需盯住这一个稳定名字。
   ci-gate:
-    needs: [changes, issue-link, build, gates, alpha-compat, render-scroll, input-terminal, session-workspace, channel-ui, packed-host]
+    needs: [changes, issue-link, build, gates, alpha-compat, render-scroll, input-terminal, session-workspace, channel-ui, packed-host, packed-host-context]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -684,6 +713,7 @@ jobs:
           GATES: ${{ needs.gates.result }}
           ALPHA_COMPAT: ${{ needs.alpha-compat.result }}
           PACKED_HOST: ${{ needs.packed-host.result }}
+          PACKED_HOST_CONTEXT: ${{ needs.packed-host-context.result }}
           RENDER_SCROLL: ${{ needs.render-scroll.result }}
           INPUT_TERMINAL: ${{ needs.input-terminal.result }}
           SESSION_WORKSPACE: ${{ needs.session-workspace.result }}
@@ -700,6 +730,10 @@ jobs:
           # every PR/integration/main run. Missing/cancelled/skipped fails too.
           if [ "${PACKED_HOST}" != "success" ]; then
             echo "::error title=CI gate::packed-host=${PACKED_HOST} (required success on Linux and macOS)"
+            status=1
+          fi
+          if [ "${PACKED_HOST_CONTEXT}" != "success" ]; then
+            echo "::error title=CI gate::packed-host-context=${PACKED_HOST_CONTEXT} (required success on Linux and macOS)"
             status=1
           fi
           # changes 是全链路的分类源头：它自己失败时所有下游都是 skipped，
